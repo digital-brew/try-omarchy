@@ -402,7 +402,7 @@
     "compressedDisk": "rootfs.ext4.zst",
     "kernelCommandLine": "root=/dev/vda rw rootwait console=tty0 console=hvc0 loglevel=4 systemd.show_status=false rd.systemd.show_status=false mitigations=off nowatchdog",
     "minimumMemoryMiB": 2048,
-    "recommendedMemoryMiB": 4096,
+    "recommendedMemoryMiB": 57344,
     "minimumCpuCount": 4,
     "virtualMachineMonitor": "qemu-system-aarch64",
     "hypervisor": "hvf",
@@ -455,7 +455,7 @@
       "mode": "ephemeral",
       "initialization": "apfs-clone",
       "fallback": "full-copy",
-      "expandedSizeMiB": 24576
+      "expandedSizeMiB": 102400
     },
     "clipboard": {
       "device": "virtserialport",

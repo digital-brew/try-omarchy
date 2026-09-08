@@ -482,7 +482,7 @@ storage = {
     "mode": "ephemeral",
     "initialization": "apfs-clone",
     "fallback": "full-copy",
-    "expandedSizeMiB": 24576,
+    "expandedSizeMiB": 102400,
 }
 if (
     runtime.get("kernel") != "vmlinuz-linux"
@@ -503,7 +503,7 @@ if (
     or runtime.get("sharedFolder") != shared_folder
     or runtime.get("devices") != expected_devices
     or runtime.get("minimumMemoryMiB") != 2048
-    or runtime.get("recommendedMemoryMiB") != 4096
+    or runtime.get("recommendedMemoryMiB") != 57344
     or runtime.get("minimumCpuCount") != 4
 ):
     fail("native runtime contract is invalid")
@@ -905,7 +905,7 @@ host_cpu_count=$(
   fail "cannot determine the host CPU count"
 }
 [[ $host_cpu_count =~ ^[0-9]+$ ]] || fail "host CPU count is invalid: $host_cpu_count"
-vcpu_count=8
+vcpu_count=16
 if (( host_cpu_count < vcpu_count )); then
   vcpu_count=$host_cpu_count
 fi
@@ -1391,7 +1391,7 @@ qemu_args=(
   # one: Linux otherwise probes the dead device and prints a misleading failure.
   -cpu 'host,pmu=off'
   -smp "$vcpu_count,sockets=1,cores=$vcpu_count,threads=1"
-  -m 4G
+  -m 56G
   -nodefaults
   # Reboot the guest inside this QEMU process, but let shutdown close the app.
   -action 'reboot=reset,shutdown=poweroff'
@@ -1481,10 +1481,10 @@ fi
 }
 
 if [[ $QEMU_SELECTED_STORAGE_MODE == persistent ]]; then
-  echo "[qemu-gpu] Starting the persistent ARM64 VirGL guest with $vcpu_count vCPUs and 4 GiB RAM." >&2
+  echo "[qemu-gpu] Starting the persistent ARM64 VirGL guest with $vcpu_count vCPUs and 56 GiB RAM." >&2
   echo "[qemu-gpu] User data: $QEMU_PERSISTENT_STORAGE_DIRECTORY" >&2
 else
-  echo "[qemu-gpu] Starting a disposable ARM64 VirGL guest with $vcpu_count vCPUs and 4 GiB RAM." >&2
+  echo "[qemu-gpu] Starting a disposable ARM64 VirGL guest with $vcpu_count vCPUs and 56 GiB RAM." >&2
 fi
 if [[ -n $shared_folder ]]; then
   echo "[qemu-gpu] Shared folder: $shared_folder (guest ~/$shared_folder_name)" >&2
