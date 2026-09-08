@@ -387,7 +387,7 @@ you choose — it never creates a folder inside it on your behalf.
   the moment it was created. Network volumes are refused because the VM's disk
   lock is unreliable on them. Anything else is turned away when you pick it, with
   the actual format named.
-- You need roughly 7 GB free to create the VM, and up to 108 GB as it fills. The
+- You need roughly 7 GB free to create the VM, and up to 162 GB as it fills. The
   disk is sparse, so it only ever occupies what the guest has actually written.
 - **Changing the location does not move your existing VM.** It stays where it
   is, and switching back reaches it again.
