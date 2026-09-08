@@ -58,7 +58,7 @@
       "buildPackages": {
         "base-devel": "1-2",
         "binutils": "2.46+r70+g155188ea10a7-1",
-        "cmake": "4.4.3-1",
+        "cmake": "4.4.3-2",
         "gcc": "16.1.1+r12+g301eb08fa2c5-1",
         "gcc-libs": "16.1.1+r12+g301eb08fa2c5-1",
         "glibc": "2.43+r22+g8362e8ce10b2-2",
@@ -70,6 +70,19 @@
         "pkgconf": "3.0.6-1",
         "xorgproto": "2025.1-1"
       }
+    },
+    "aquamarine": {
+      "version": "0.14.0",
+      "pkgrel": "2",
+      "repository": "https://github.com/hyprwm/aquamarine",
+      "url": "https://github.com/hyprwm/aquamarine/archive/v0.14.0/aquamarine-0.14.0.tar.gz",
+      "sha256": "5dcf0b17f7dd51539fd7e79d68484f04240b3b63cf9f5f21d5b6dea0088168f9",
+      "pkgbuild": "pinned-packages/aquamarine/PKGBUILD",
+      "pkgbuildSha256": "1bd4197238a4f0092216ab2dfd723126d618cceb977d45865e140a488a8f56ff",
+      "packagingRepository": "https://gitlab.archlinux.org/archlinux/packaging/packages/aquamarine.git",
+      "packagingCommit": "8489a8358817a964a923f05ba324996378d81a5d",
+      "license": "BSD-3-Clause",
+      "binarySha256": "16bb51664f8c00d076158613e7bcec313ddd1d0f2c79a0acd7bb8ea8647bf614"
     },
     "mise": {
       "version": "2026.8.11",
@@ -186,7 +199,13 @@
   "inputs": {
     "packages": "packages.txt",
     "packageLock": "packages.lock.json",
-    "pacmanConfig": "pacman.aarch64.conf"
+    "pacmanConfig": "pacman.aarch64.conf",
+    "abiPackagePins": [
+      {
+        "name": "aquamarine",
+        "version": "0.14.0-2"
+      }
+    ]
   },
   "authenticity": {
     "verbatimRuntimeTrees": [
