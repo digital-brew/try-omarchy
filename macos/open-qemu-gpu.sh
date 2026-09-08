@@ -78,10 +78,18 @@ camera_usage=$(/usr/libexec/PlistBuddy -c 'Print :NSCameraUsageDescription' "$in
 }
 [[ -n $camera_usage ]] || fail "built app has an empty camera usage description"
 
+# `open` does not inherit this shell's environment, so pass the VM sizing
+# overrides (see run-qemu-gpu.sh) through explicitly when they are set.
+sizing_environment=()
+for variable in OMARCHY_VM_CPUS OMARCHY_VM_MEMORY_GIB OMARCHY_VM_DISK_GIB; do
+  [[ -n ${!variable:-} ]] && sizing_environment+=(--env "$variable=${!variable}")
+done
+
 exec /usr/bin/open \
   -n \
   -W \
   --env OMARCHY_QEMU_GPU_DEVELOPMENT_MULTI_DISK=1 \
+  ${sizing_environment[@]+"${sizing_environment[@]}"} \
   --stdin /dev/null \
   --stdout /dev/null \
   --stderr /dev/null \

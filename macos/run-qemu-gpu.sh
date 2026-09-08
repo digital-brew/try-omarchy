@@ -20,6 +20,16 @@ boot_recovery_failed_status=81
 # and normal launches on one machine definition so they cannot drift apart.
 qemu_machine='virt,accel=hvf,gic-version=3'
 
+# VM sizing. These defaults assume the Mac is dedicated to Try Omarchy while it
+# runs. Override any of them per launch through the environment, for example:
+#   OMARCHY_VM_CPUS=8 OMARCHY_VM_MEMORY_GIB=16 OMARCHY_VM_DISK_GIB=64 make run
+# CPUs are clamped to the host's logical core count. The disk size applies only
+# when a VM is created (first launch, --reset-storage, or --ephemeral); grow an
+# existing VM with macos/resize-vm-disk.sh instead.
+vm_cpus=${OMARCHY_VM_CPUS:-16}
+vm_memory_gib=${OMARCHY_VM_MEMORY_GIB:-56}
+vm_disk_gib=${OMARCHY_VM_DISK_GIB:-150}
+
 boot_recovery_fail() {
   echo "run-qemu-gpu: $*" >&2
   exit "$boot_recovery_failed_status"
@@ -861,6 +871,13 @@ IFS=$'\t' read -r bundle_identity source_disk_sha source_disk_bytes compressed_d
 [[ $compressed_disk_bytes =~ ^[1-9][0-9]*$ ]] || fail "validated compressed rootfs size is invalid"
 [[ $expanded_disk_bytes =~ ^[1-9][0-9]*$ ]] || fail "validated working-disk size is invalid"
 (( expanded_disk_bytes >= source_disk_bytes )) || fail "working disk cannot be smaller than its source"
+# The bundle's expandedSizeMiB is the guest contract's default; the launcher's
+# vm_disk_gib decides the working disk actually created for a new VM.
+[[ $vm_disk_gib =~ ^[1-9][0-9]{0,3}$ ]] && (( vm_disk_gib <= 8192 )) ||
+  fail "OMARCHY_VM_DISK_GIB must be a whole number from 1 to 8192: $vm_disk_gib"
+expanded_disk_bytes=$(( vm_disk_gib * 1024 * 1024 * 1024 ))
+(( expanded_disk_bytes >= source_disk_bytes )) ||
+  fail "OMARCHY_VM_DISK_GIB ($vm_disk_gib GiB) is smaller than the bundled root disk"
 [[ -n $kernel_command_line ]] || fail "validated kernel command line is empty"
 case " $kernel_command_line " in
   *' tryomarchy.ssh_access='*)
@@ -905,11 +922,19 @@ host_cpu_count=$(
   fail "cannot determine the host CPU count"
 }
 [[ $host_cpu_count =~ ^[0-9]+$ ]] || fail "host CPU count is invalid: $host_cpu_count"
-vcpu_count=16
+[[ $vm_cpus =~ ^[1-9][0-9]*$ ]] || fail "OMARCHY_VM_CPUS must be a positive whole number: $vm_cpus"
+vcpu_count=$vm_cpus
 if (( host_cpu_count < vcpu_count )); then
   vcpu_count=$host_cpu_count
 fi
-(( vcpu_count >= 4 )) || fail "the ARM guest requires at least four host CPUs"
+(( vcpu_count >= 4 )) || fail "the ARM guest requires at least four CPUs"
+
+host_memory_bytes=$(sysctl -n hw.memsize 2>/dev/null) || fail "cannot determine the host memory size"
+[[ $host_memory_bytes =~ ^[1-9][0-9]*$ ]] || fail "host memory size is invalid: $host_memory_bytes"
+[[ $vm_memory_gib =~ ^[1-9][0-9]*$ ]] || fail "OMARCHY_VM_MEMORY_GIB must be a positive whole number: $vm_memory_gib"
+(( vm_memory_gib >= 2 )) || fail "the ARM guest requires at least 2 GiB of RAM"
+(( vm_memory_gib * 1024 * 1024 * 1024 < host_memory_bytes )) ||
+  fail "OMARCHY_VM_MEMORY_GIB ($vm_memory_gib GiB) must be less than the host's $(( host_memory_bytes / 1024 / 1024 / 1024 )) GiB"
 
 # The launcher publishes one optional Mac folder for the guest. The Swift app
 # canonicalizes and validates the selection first; re-check here so a stray
@@ -1391,7 +1416,7 @@ qemu_args=(
   # one: Linux otherwise probes the dead device and prints a misleading failure.
   -cpu 'host,pmu=off'
   -smp "$vcpu_count,sockets=1,cores=$vcpu_count,threads=1"
-  -m 56G
+  -m "${vm_memory_gib}G"
   -nodefaults
   # Reboot the guest inside this QEMU process, but let shutdown close the app.
   -action 'reboot=reset,shutdown=poweroff'
@@ -1481,10 +1506,10 @@ fi
 }
 
 if [[ $QEMU_SELECTED_STORAGE_MODE == persistent ]]; then
-  echo "[qemu-gpu] Starting the persistent ARM64 VirGL guest with $vcpu_count vCPUs and 56 GiB RAM." >&2
+  echo "[qemu-gpu] Starting the persistent ARM64 VirGL guest with $vcpu_count vCPUs and $vm_memory_gib GiB RAM." >&2
   echo "[qemu-gpu] User data: $QEMU_PERSISTENT_STORAGE_DIRECTORY" >&2
 else
-  echo "[qemu-gpu] Starting a disposable ARM64 VirGL guest with $vcpu_count vCPUs and 56 GiB RAM." >&2
+  echo "[qemu-gpu] Starting a disposable ARM64 VirGL guest with $vcpu_count vCPUs, $vm_memory_gib GiB RAM, and a $vm_disk_gib GiB disk." >&2
 fi
 if [[ -n $shared_folder ]]; then
   echo "[qemu-gpu] Shared folder: $shared_folder (guest ~/$shared_folder_name)" >&2

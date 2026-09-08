@@ -301,6 +301,23 @@ On M3 and newer Apple Silicon, Try Omarchy also exposes ARM EL2 to Linux, so
 the guest provides `/dev/kvm` for nested VMs and compatible VMMs. Older Apple
 Silicon Macs automatically keep the normal non-nested launch path.
 
+### VM sizing
+
+The guest's CPU, memory, and disk sizes are variables at the top of
+`macos/run-qemu-gpu.sh`. The defaults assume the Mac is dedicated to Try
+Omarchy while it runs: 16 vCPUs (clamped to the host's logical cores), 56 GiB
+of RAM, and a 150 GiB working disk. Edit the defaults there, or override any
+of them for a single launch:
+
+```sh
+OMARCHY_VM_CPUS=8 OMARCHY_VM_MEMORY_GIB=16 OMARCHY_VM_DISK_GIB=64 make run
+```
+
+Memory must stay below the host's physical RAM, and at least 4 vCPUs and 2 GiB
+are required. The disk size is applied only when a VM is created: on first
+launch, after **Reset Omarchy**, or for `make run-ephemeral`. An existing VM
+keeps its size; grow it with `macos/resize-vm-disk.sh` as described below.
+
 ## Data and updates
 
 Normal launches keep one persistent VM under
