@@ -140,8 +140,12 @@ def main() -> None:
         check((GUEST / value).is_file(), f"spec input exists: {value}")
     abi_pins = spec["inputs"]["abiPackagePins"]
     check(
-        abi_pins == [{"name": "aquamarine", "version": "0.14.0-2"}],
-        "factory abi pins keep aquamarine on libaquamarine.so=13 for the locked Hyprland",
+        abi_pins
+        == [
+            {"name": "aquamarine", "version": "0.14.0-2"},
+            {"name": "hyprtoolkit", "version": "0.5.4-4"},
+        ],
+        "factory abi pins keep aquamarine on libaquamarine.so=13, and hyprtoolkit built against it, for the locked Hyprland",
     )
     aquamarine = spec.get("supplyChain", {}).get("aquamarine", {})
     pkgbuild = GUEST / aquamarine.get("pkgbuild", "")
@@ -159,7 +163,7 @@ def main() -> None:
             "packagingRepository": "https://gitlab.archlinux.org/archlinux/packaging/packages/aquamarine.git",
             "packagingCommit": "8489a8358817a964a923f05ba324996378d81a5d",
             "license": "BSD-3-Clause",
-            "binarySha256": "16bb51664f8c00d076158613e7bcec313ddd1d0f2c79a0acd7bb8ea8647bf614",
+            "binarySha256": "5d392cbfc7b1c95e22122b6e1c6e50c7d51b7ed1d700c4232a0ad13a3beddc25",
         }
         and pkgbuild.is_file()
         and hashlib.sha256(pkgbuild.read_bytes()).hexdigest() == aquamarine["pkgbuildSha256"]
@@ -168,8 +172,35 @@ def main() -> None:
         and "pkgrel=2" in pkgbuild_text,
         "factory rebuilds aquamarine 0.14 from the reviewed Arch PKGBUILD and upstream tarball",
     )
+    hyprtoolkit = spec.get("supplyChain", {}).get("hyprtoolkit", {})
+    hyprtoolkit_pkgbuild = GUEST / hyprtoolkit.get("pkgbuild", "")
+    hyprtoolkit_pkgbuild_text = hyprtoolkit_pkgbuild.read_text() if hyprtoolkit_pkgbuild.is_file() else ""
+    check(
+        hyprtoolkit
+        == {
+            "version": "0.5.4",
+            "pkgrel": "4",
+            "repository": "https://github.com/hyprwm/hyprtoolkit",
+            "url": "https://github.com/hyprwm/hyprtoolkit/archive/v0.5.4/hyprtoolkit-0.5.4.tar.gz",
+            "sha256": "2fb59789f231c1c4e9154ceffc1e7524c0cae154807c0d57e6166806255b570f",
+            "pkgbuild": "pinned-packages/hyprtoolkit/PKGBUILD",
+            "pkgbuildSha256": "53453460db5cb96637619ea526ef545d4a2b0aaedf1fc820d19bbb270e283d47",
+            "packagingRepository": "https://gitlab.archlinux.org/archlinux/packaging/packages/hyprtoolkit.git",
+            "packagingCommit": "ca95ed82d013c0318eb2883655a2c5c3288fc103",
+            "license": "BSD-3-Clause",
+            "binarySha256": "2fa8432404895d616f49dda0fb170c9f767e8e911917330c5bb41d899fa93196",
+        }
+        and hyprtoolkit_pkgbuild.is_file()
+        and hashlib.sha256(hyprtoolkit_pkgbuild.read_bytes()).hexdigest() == hyprtoolkit["pkgbuildSha256"]
+        and f"sha256sums=('{hyprtoolkit['sha256']}')" in hyprtoolkit_pkgbuild_text
+        and "pkgver=0.5.4" in hyprtoolkit_pkgbuild_text
+        and "pkgrel=4" in hyprtoolkit_pkgbuild_text
+        and "arch=(x86_64 aarch64)" in hyprtoolkit_pkgbuild_text,
+        "factory rebuilds hyprtoolkit 0.5.4 against aquamarine 0.14 from the reviewed Arch PKGBUILD and upstream tarball",
+    )
     builder_conf_writer = read(GUEST / "scripts/write-builder-pacman-conf.py")
     build_aquamarine = read(GUEST / "scripts/build-pinned-aquamarine.sh")
+    build_hyprtoolkit = read(GUEST / "scripts/build-pinned-hyprtoolkit.sh")
     check(
         "try-omarchy-abi-pins" in builder_conf_writer
         and "drop_ignore" in builder_conf_writer
@@ -180,7 +211,12 @@ def main() -> None:
         and "build-pinned-aquamarine.sh" in read(GUEST / "scripts/refresh-package-lock.sh")
         and "download digest mismatch" in build_aquamarine
         and "aquamarine reproducible library digest mismatch" in build_aquamarine
-        and "aquamarine source archive has an unsafe member set" in build_aquamarine,
+        and "aquamarine source archive has an unsafe member set" in build_aquamarine
+        and "build-pinned-hyprtoolkit.sh" in read(GUEST / "build.sh")
+        and "build-pinned-hyprtoolkit.sh" in read(GUEST / "scripts/refresh-package-lock.sh")
+        and "hyprtoolkit reproducible library digest mismatch" in build_hyprtoolkit
+        and "depend = libaquamarine.so=13-64" in build_hyprtoolkit
+        and 'name not in {"aquamarine", "hyprtoolkit"}' in builder_conf_writer,
         "factory builder pacman derivation rebuilds abi pins from source and strips them from IgnorePkg",
     )
 
@@ -301,7 +337,7 @@ def main() -> None:
         "factory pacman retains the ARM Omarchy keyring repository",
     )
     check(
-        "IgnorePkg = linux-aarch64 linux-aarch64-headers hyprland aquamarine"
+        "IgnorePkg = linux-aarch64 linux-aarch64-headers hyprland aquamarine hyprtoolkit"
         in pacman_conf,
         "factory pacman holds the QEMU-booted kernel, matching headers, patched compositor, and its aquamarine ABI",
     )
@@ -467,7 +503,7 @@ def main() -> None:
             "url": "https://github.com/omacom-io/ttfx/archive/refs/tags/v0.3.2.tar.gz",
             "sha256": "d0c0df4867e7f03142fb7f77c66670d0e8da15534239c1a7abfd89f19dfc00f6",
             "cargoLockSha256": "49e2091962fc4d425b4cf3bde1a105719b5b50eed0583ec90e85922adb45e2ce",
-            "binarySha256": "9171a07c752b202a21f80a4ad336a9d093be06a6c96b062e8b5e0c158d2a86d2",
+            "binarySha256": "d034cc5b9a8d410ce93113ef0a5d27b5ee2327948562bf2b0e756eebd326fa8f",
             "target": "aarch64-unknown-linux-gnu",
             "rustPackageVersion": "rust 1:1.98.1-1",
             "rustcVersion": "rustc 1.98.1 (48a229cea 2026-09-01) (Arch Linux rust 1:1.98.1-1)",
@@ -558,7 +594,11 @@ def main() -> None:
         and 'supply_chain.get("aquamarine")' in launcher
         and '"build spec aquamarine component"' in launcher
         and aquamarine["pkgbuildSha256"] in launcher
-        and aquamarine["binarySha256"] in launcher,
+        and aquamarine["binarySha256"] in launcher
+        and 'supply_chain.get("hyprtoolkit")' in launcher
+        and '"build spec hyprtoolkit component"' in launcher
+        and hyprtoolkit["pkgbuildSha256"] in launcher
+        and hyprtoolkit["binarySha256"] in launcher,
         "native launcher accepts and pins the patched Hyprland component",
     )
     check(
@@ -989,6 +1029,8 @@ def main() -> None:
     check(
         "**aquamarine**" in third_party_notices
         and "hyprwm/aquamarine" in third_party_notices
+        and "**hyprtoolkit**" in third_party_notices
+        and "hyprwm/hyprtoolkit" in third_party_notices
         and "PKGBUILD" in third_party_notices
         and "IgnorePkg" in third_party_notices,
         "third-party notices cover the rebuilt aquamarine ABI pin",

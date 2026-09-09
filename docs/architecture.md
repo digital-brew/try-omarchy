@@ -168,7 +168,8 @@ creates the account on first boot.
   the guest's immutable local repository. While that pin still needs
   `libaquamarine.so=13`, the factory rebuilds `aquamarine 0.14.0-2` from the
   reviewed Arch PKGBUILD and upstream tarball (ALARM mirrors only publish
-  `.so=14`) and holds aquamarine on `IgnorePkg` in the finished guest so Omarchy
+  `.so=14`), rebuilds `hyprtoolkit 0.5.4-4` against it, and holds both on
+  `IgnorePkg` in the finished guest so Omarchy
   updates cannot pull the break.
 - The final Arch Linux ARM pacman files live under `/usr/share/try-omarchy/`.
   An Omarchy-supported `pre-refresh-pacman` hook restores them after a channel

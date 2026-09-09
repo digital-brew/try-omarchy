@@ -189,6 +189,12 @@ if (( abi_pin_count > 0 )); then
     --guest-dir "$guest_dir" \
     --output-repo "$abi_pin_repo" \
     --work "$work" || fail "could not rebuild the reviewed aquamarine ABI pin"
+  "$guest_dir/scripts/build-pinned-hyprtoolkit.sh" \
+    --spec "$spec" \
+    --guest-dir "$guest_dir" \
+    --output-repo "$abi_pin_repo" \
+    --abi-repo "$abi_pin_repo" \
+    --work "$work" || fail "could not rebuild the reviewed hyprtoolkit ABI pin"
   builder_conf_args+=(--abi-repo "$abi_pin_repo")
 fi
 if [[ -n $pinned_repo ]]; then

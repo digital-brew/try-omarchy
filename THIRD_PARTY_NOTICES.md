@@ -20,6 +20,11 @@ code.
   PKGBUILD and `hyprwm/aquamarine` v0.14.0 tarball (pinned in `guest/spec.json`)
   for empty-root resolve/pacstrap only. The finished guest holds aquamarine on
   `IgnorePkg` with Hyprland so Omarchy updates cannot pull the ABI break.
+- **hyprtoolkit** — BSD-3-Clause; Arch Linux ARM rebuilt `hyprtoolkit` against
+  `libaquamarine.so=14`, so the factory also rebuilds `hyprtoolkit 0.5.4-4` from
+  the reviewed Arch PKGBUILD and `hyprwm/hyprtoolkit` v0.5.4 tarball against the
+  pinned aquamarine 0.14 (pinned in `guest/spec.json`), for empty-root
+  resolve/pacstrap only. The finished guest holds hyprtoolkit on `IgnorePkg`.
 - **Glaze** — MIT; the pinned v7.2.0 headers are used by the Hyprland build, and
   their verified upstream license is retained in the rebuilt guest package.
 - **ANGLE, VirGLRenderer, libepoxy, SDL, libslirp, GLib, Pixman, and other QEMU

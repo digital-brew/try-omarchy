@@ -95,6 +95,12 @@ if (( abi_pin_count > 0 )); then
     --guest-dir "$guest_dir" \
     --output-repo "$temporary/abi-pin-repo" \
     --work "$temporary" || fail "could not rebuild the reviewed aquamarine ABI pin"
+  "$script_dir/build-pinned-hyprtoolkit.sh" \
+    --spec "$spec" \
+    --guest-dir "$guest_dir" \
+    --output-repo "$temporary/abi-pin-repo" \
+    --abi-repo "$temporary/abi-pin-repo" \
+    --work "$temporary" || fail "could not rebuild the reviewed hyprtoolkit ABI pin"
   builder_conf_args+=(--abi-repo "$temporary/abi-pin-repo")
 fi
 "${builder_conf_args[@]}" || fail "could not derive the factory builder pacman configuration"

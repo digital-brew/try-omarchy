@@ -540,6 +540,7 @@ supply_chain_keys = {
     "archLinuxArmPackagesCommit",
     "archLinuxArmPackagesRepository",
     "hyprland",
+    "hyprtoolkit",
     "mise",
     "omarchyPackagesCommit",
     "omarchyPackagesRepository",
@@ -633,9 +634,40 @@ if aquamarine != {
     "packagingRepository": "https://gitlab.archlinux.org/archlinux/packaging/packages/aquamarine.git",
     "packagingCommit": "8489a8358817a964a923f05ba324996378d81a5d",
     "license": "BSD-3-Clause",
-    "binarySha256": "16bb51664f8c00d076158613e7bcec313ddd1d0f2c79a0acd7bb8ea8647bf614",
+    "binarySha256": "5d392cbfc7b1c95e22122b6e1c6e50c7d51b7ed1d700c4232a0ad13a3beddc25",
 }:
     fail("factory aquamarine component is not the reviewed libaquamarine.so=13 rebuild")
+hyprtoolkit = exact_keys(
+    supply_chain.get("hyprtoolkit"),
+    {
+        "binarySha256",
+        "license",
+        "packagingCommit",
+        "packagingRepository",
+        "pkgbuild",
+        "pkgbuildSha256",
+        "pkgrel",
+        "repository",
+        "sha256",
+        "url",
+        "version",
+    },
+    "build spec hyprtoolkit component",
+)
+if hyprtoolkit != {
+    "version": "0.5.4",
+    "pkgrel": "4",
+    "repository": "https://github.com/hyprwm/hyprtoolkit",
+    "url": "https://github.com/hyprwm/hyprtoolkit/archive/v0.5.4/hyprtoolkit-0.5.4.tar.gz",
+    "sha256": "2fb59789f231c1c4e9154ceffc1e7524c0cae154807c0d57e6166806255b570f",
+    "pkgbuild": "pinned-packages/hyprtoolkit/PKGBUILD",
+    "pkgbuildSha256": "53453460db5cb96637619ea526ef545d4a2b0aaedf1fc820d19bbb270e283d47",
+    "packagingRepository": "https://gitlab.archlinux.org/archlinux/packaging/packages/hyprtoolkit.git",
+    "packagingCommit": "ca95ed82d013c0318eb2883655a2c5c3288fc103",
+    "license": "BSD-3-Clause",
+    "binarySha256": "2fa8432404895d616f49dda0fb170c9f767e8e911917330c5bb41d899fa93196",
+}:
+    fail("factory hyprtoolkit component is not the reviewed libaquamarine.so=13 rebuild")
 mise = exact_keys(
     supply_chain.get("mise"),
     {"binarySha256", "license", "reportedVersion", "sha256", "url", "version"},
@@ -684,7 +716,7 @@ if ttfx != {
     "url": "https://github.com/omacom-io/ttfx/archive/refs/tags/v0.3.2.tar.gz",
     "sha256": "d0c0df4867e7f03142fb7f77c66670d0e8da15534239c1a7abfd89f19dfc00f6",
     "cargoLockSha256": "49e2091962fc4d425b4cf3bde1a105719b5b50eed0583ec90e85922adb45e2ce",
-    "binarySha256": "9171a07c752b202a21f80a4ad336a9d093be06a6c96b062e8b5e0c158d2a86d2",
+    "binarySha256": "d034cc5b9a8d410ce93113ef0a5d27b5ee2327948562bf2b0e756eebd326fa8f",
     "target": "aarch64-unknown-linux-gnu",
     "rustPackageVersion": "rust 1:1.98.1-1",
     "rustcVersion": "rustc 1.98.1 (48a229cea 2026-09-01) (Arch Linux rust 1:1.98.1-1)",
