@@ -604,7 +604,7 @@ exact_keys(
 hyprland_identity = hashlib.sha256(
     json.dumps(hyprland, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
 ).hexdigest()
-if hyprland_identity != "84286b41ddf96fa6d2434cdbec4e347c244ecc89c6e03035c1435eacaa1d64a5":
+if hyprland_identity != "ae82ce3f989eff555f1faa2400ff0ecb3d7b52b4797c6e3f4fca29959e5a7790":
     fail("factory Hyprland component is not the reviewed rounded-border build")
 aquamarine = exact_keys(
     supply_chain.get("aquamarine"),
