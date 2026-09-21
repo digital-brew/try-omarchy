@@ -817,6 +817,14 @@ def main() -> None:
         in configure,
         "the wayland-ime flag is appended to Chromium's existing flags, never overwriting Basecamp's upstream ones",
     )
+    check(
+        'omarchy_chromium_flags="$root/usr/share/omarchy/config/chromium-flags.conf"'
+        in configure
+        and "! grep -q -- '--disable-gpu' \"$omarchy_chromium_flags\"" in configure
+        and "printf -- '--disable-gpu\\n'" in configure
+        and "printf -- '--ozone-platform=wayland\\n'" in configure,
+        "rootfs configuration appends software rendering to the flags Omarchy's browser installer propagates",
+    )
     chromium_ime_flag = read(
         GUEST / "fragments/chromium-flags-wayland-ime.append.conf"
     )
@@ -824,6 +832,12 @@ def main() -> None:
         "--enable-wayland-ime" in chromium_ime_flag,
         "Chromium launches with the flag fcitx5 needs to reach Wayland text fields",
     )
+    for browser_flags_name in ("chromium-flags.conf", "brave-flags.conf"):
+        browser_flags = read(GUEST / "native-overlay/etc/skel/.config" / browser_flags_name)
+        check(
+            "--ozone-platform=wayland\n--disable-gpu\n" in browser_flags,
+            f"{browser_flags_name} makes Chromium-based browsers render in software on VirGL",
+        )
     fcitx_guard = read(
         GUEST / "native-overlay/etc/systemd/user/omarchy-fcitx5.service.d/10-guard.conf"
     )
@@ -1093,6 +1107,13 @@ def main() -> None:
         and "sys.argv[1].strip()" in vivaldi_installer
         and "already installed" in vivaldi_installer,
         "Vivaldi installer verifies and packages one signed ARM64 vendor release with root-owned integrity metadata",
+    )
+    check(
+        "grep -qw 'omarchy.qemu_virgl=1' /proc/cmdline" in vivaldi_installer
+        and "VIVALDI_USER_FLAGS+=(--ozone-platform=wayland --disable-gpu)"
+        in vivaldi_installer
+        and "OMARCHY_BROWSER_KEEP_GPU" in vivaldi_installer,
+        "Vivaldi renders in software on the VirGL guest unless the user keeps the GPU path",
     )
     check(
         "repo-add" in vivaldi_installer

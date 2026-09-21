@@ -209,6 +209,12 @@ if text.count(environment_marker) != 1 or text.count(exec_marker) != 1:
     raise SystemExit(1)
 flags = r'''XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 VIVALDI_USER_FLAGS=()
+# Chromium-based browsers composite through VirGL, which cannot give them the
+# GPU path they expect, so render them in software on the VirGL guest unless
+# the user opts back into the GPU path with OMARCHY_BROWSER_KEEP_GPU=1.
+if [[ ${OMARCHY_BROWSER_KEEP_GPU:-0} != 1 ]] && [[ -r /proc/cmdline ]] && grep -qw 'omarchy.qemu_virgl=1' /proc/cmdline; then
+  VIVALDI_USER_FLAGS+=(--ozone-platform=wayland --disable-gpu)
+fi
 if [[ -f "$XDG_CONFIG_HOME/vivaldi-$CHROME_VERSION_EXTRA.conf" ]]; then
   while IFS= read -r flag; do
     trimmed=${flag#"${flag%%[![:space:]]*}"}

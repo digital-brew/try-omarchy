@@ -449,6 +449,22 @@ never be smaller than the factory image it was cloned from. The size is fixed
 when the disk is created; growing a saved VM later is covered under
 **Growing an existing VM disk**.
 
+## Browser rendering on VirGL
+
+Chromium-based browsers (Chromium, Chrome, Edge, Brave, and Vivaldi) composite
+through VirGL, which cannot give them the GPU path they expect, so Try Omarchy
+launches them with `--ozone-platform=wayland --disable-gpu` and renders them in
+software on the VirGL guest. New VMs get this through the seeded skel flag
+files, and Omarchy's own `config/chromium-flags.conf`, which
+`omarchy-install-browser` copies over a browser's flags file when one is
+installed, is patched the same way.
+
+Deleting a browser's flags file (`~/.config/chromium-flags.conf`,
+`~/.config/brave-flags.conf`, and similar) re-enables the GPU path for that
+browser. The Vivaldi installer also honours `OMARCHY_BROWSER_KEEP_GPU`, so
+launching `omarchy install browser vivaldi` with `OMARCHY_BROWSER_KEEP_GPU=1`
+in the environment omits the software-rendering flags without editing any file.
+
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)

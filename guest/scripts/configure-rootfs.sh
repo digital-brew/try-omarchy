@@ -69,6 +69,21 @@ cp -a "$guest_dir/factory-overlay/." "$root/"
 # The clipboard bridge mirrors the Mac pasteboard into the Wayland session,
 # and the Mac folder mount completes the host integration.
 cp -a "$guest_dir/native-overlay/." "$root/"
+
+# omarchy-install-browser copies Omarchy's own config/chromium-flags.conf over
+# the brave-/chrome-/edge-flags.conf skel files when a browser is installed, so
+# the software-rendering flags must also live in the copy it propagates, or the
+# browser would silently probe the GPU path VirGL cannot provide.
+omarchy_chromium_flags="$root/usr/share/omarchy/config/chromium-flags.conf"
+if [[ -f $omarchy_chromium_flags ]] &&
+  ! grep -q -- '--disable-gpu' "$omarchy_chromium_flags"; then
+  {
+    printf '\n# VirGL cannot give Chromium its expected GPU path; render in software.\n'
+    printf -- '--disable-gpu\n'
+    printf -- '--ozone-platform=wayland\n'
+  } >>"$omarchy_chromium_flags"
+fi
+
 "$guest_dir/scripts/install-touch-id-sudo.sh" \
   --root "$root" \
   --guest-dir "$guest_dir"
