@@ -136,6 +136,11 @@ def main() -> None:
         "new launcher settings default the disk maximum to 150 GiB",
     )
     check(
+        spec["runtime"]["storage"].get("discard") == "unmap"
+        and "systemctl enable fstrim.timer" in read(GUEST / "scripts/finalize-rootfs.sh"),
+        "guest TRIM is passed through to the sparse host image and fstrim.timer is enabled",
+    )
+    check(
         set(spec["inputs"]) == {"packages", "packageLock", "pacmanConfig", "packageRepositoryMirrors"},
         "spec has a minimal input set",
     )

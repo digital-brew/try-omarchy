@@ -536,10 +536,12 @@ battery = {
 }
 storage = {
     "device": "virtio-blk-pci",
+    "discard": "unmap",
     "format": "raw",
     "mode": "ephemeral",
     "initialization": "apfs-clone",
     "fallback": "full-copy",
+    "fstrimTimer": "enabled",
     "expandedSizeMiB": 24576,
 }
 if (
@@ -1753,7 +1755,7 @@ qemu_args=(
   -kernel "$launch_kernel"
   -initrd "$launch_initramfs"
   -append "$launch_append"
-  -drive "if=none,id=omarchy-root,file=$working_disk,format=raw,media=disk,cache=writeback"
+  -drive "if=none,id=omarchy-root,file=$working_disk,format=raw,media=disk,cache=writeback,discard=unmap"
   -device 'virtio-blk-pci,drive=omarchy-root,serial=omarchy-root'
   -device "$gpu_device"
   # Cocoa forwards its live backing-pixel dimensions and the current host
