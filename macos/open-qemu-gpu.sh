@@ -84,12 +84,17 @@ usb_environment=()
 if [[ -n ${OMARCHY_QEMU_GPU_USB_HOST:-} ]]; then
   usb_environment=(--env "OMARCHY_QEMU_GPU_USB_HOST=$OMARCHY_QEMU_GPU_USB_HOST")
 fi
+disk_environment=()
+if [[ -n ${OMARCHY_QEMU_GPU_DISK_GIB:-} ]]; then
+  disk_environment=(--env "OMARCHY_QEMU_GPU_DISK_GIB=$OMARCHY_QEMU_GPU_DISK_GIB")
+fi
 
 exec /usr/bin/open \
   -n \
   -W \
   --env OMARCHY_QEMU_GPU_DEVELOPMENT_MULTI_DISK=0 \
   ${usb_environment[@]+"${usb_environment[@]}"} \
+  ${disk_environment[@]+"${disk_environment[@]}"} \
   --stdin /dev/null \
   --stdout /dev/null \
   --stderr /dev/null \
