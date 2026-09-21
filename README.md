@@ -805,10 +805,11 @@ keep the old failing-fast behaviour.
 The guest stage compiles Hyprland and the two ABI pins (aquamarine and
 hyprtoolkit) on every guest rebuild. Their objects are cached with ccache in
 the persistent Docker work volume, so a rebuild that only changed the overlay
-or package set recompiles nothing. The cache is keyed on paths relative to the
-staging directory, and the prefix maps already make emitted paths independent
-of it, so cached objects are byte-identical and the recorded binary provenance
-still applies. `make clean` removes the volume together with the pacman cache.
+or package set recompiles nothing. The compiles run from a fixed staging path
+in that volume, so every later build presents the compiler with identical
+paths and flags; cached objects are byte-identical to a cold compile and the
+recorded binary provenance still applies. `make clean` removes the volume
+together with the pacman cache.
 
 ### Stable local signing
 

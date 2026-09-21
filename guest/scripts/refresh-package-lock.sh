@@ -5,7 +5,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: refresh-package-lock.sh [--source OMARCHY_SOURCE] [--spec FILE] --output FILE"
+  echo "Usage: refresh-package-lock.sh [--source OMARCHY_SOURCE] [--spec FILE] [--work DIR] --output FILE"
 }
 
 fail() {
@@ -18,6 +18,7 @@ guest_dir=$(cd "$script_dir/.." && pwd)
 source_dir=""
 spec="$guest_dir/spec.json"
 output=""
+work_dir=""
 
 while (($#)); do
   case "$1" in
@@ -31,6 +32,12 @@ while (($#)); do
       ;;
     --spec)
       spec=${2:-}
+      shift 2
+      ;;
+    --work)
+      # Persistent build/cache directory for the ABI pin rebuild (compiler
+      # cache, downloads); defaults to a temporary directory.
+      work_dir=${2:-}
       shift 2
       ;;
     -h|--help)
@@ -94,7 +101,7 @@ if (( abi_pin_count > 0 )); then
     --spec "$spec" \
     --guest-dir "$guest_dir" \
     --output-repo "$temporary/abi-pin-repo" \
-    --work "$temporary" || fail "could not rebuild the reviewed ABI pins"
+    --work "${work_dir:-$temporary}" || fail "could not rebuild the reviewed ABI pins"
   builder_conf_args+=(--abi-repo "$temporary/abi-pin-repo")
 fi
 "${builder_conf_args[@]}" || fail "could not derive the factory builder pacman configuration"

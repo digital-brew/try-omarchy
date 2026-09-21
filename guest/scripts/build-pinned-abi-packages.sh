@@ -78,7 +78,7 @@ cleanup() {
   if (( added_build_user )); then
     userdel abi-build >/dev/null 2>&1 || true
   fi
-  if [[ -n $stage && -d $stage && $stage == "$work/"abi-package.* ]]; then
+  if [[ -n $stage && -d $stage && $stage == "$work/"abi-package-* ]]; then
     rm -rf -- "$stage"
   fi
   if (( cleanup_work )); then
@@ -184,7 +184,12 @@ grep -F "pkgver=$version" "$pkgbuild_path" >/dev/null || fail "ABI PKGBUILD vers
 grep -F "pkgrel=$pkgrel" "$pkgbuild_path" >/dev/null || fail "ABI PKGBUILD pkgrel mismatch"
 
 cache_dir="$work/$name-download-cache"
-stage=$(mktemp -d "$work/abi-package.XXXXXX")
+# A fixed staging path (not mktemp) keeps every absolute path the compiler
+# sees identical between builds, so ccache can reuse objects without path
+# rewriting; rewriting would change __FILE__ and break the digest check below.
+stage="$work/abi-package-$name"
+rm -rf -- "$stage"
+mkdir -m 0755 "$stage"
 # makepkg runs as an unprivileged user and must traverse this parent.
 chmod 0755 "$stage"
 install -d -m 0755 "$cache_dir"
@@ -259,9 +264,10 @@ printf '\nCFLAGS+=" -ffile-prefix-map=%s=/usr/src/try-omarchy-%s"\nCXXFLAGS+=" -
   "$stage" "$name" "$stage" "$name" >> "$makepkg_config"
 
 # makepkg puts ccache's compiler shims first on PATH when BUILDENV has ccache.
-# The cache lives in the persistent work volume, owned by the build user; the
-# prefix maps above keep cached objects identical to a cold compile, so the
-# package provenance check below is unaffected.
+# The cache lives in the persistent work volume, owned by the build user. The
+# staging path is fixed and the working directory is left out of the hash, so
+# a later build hits the cache; cached objects came from the same absolute
+# paths and prefix maps, so the package provenance check below is unaffected.
 ccache_dir="$work/ccache/abi-pins"
 install -d -m 0700 -o abi-build -g abi-build "$work/ccache" "$ccache_dir"
 [[ -O "$work/ccache" ]] && chown abi-build:abi-build "$work/ccache" || true
@@ -272,7 +278,7 @@ export PACKAGER='Try Omarchy factory <factory@try-omarchy>'
   cd "$build_dir"
   runuser -u abi-build -- env HOME="$build_home" SOURCE_DATE_EPOCH="$source_date_epoch" \
     PACKAGER="$PACKAGER" CMAKE_BUILD_PARALLEL_LEVEL=4 \
-    CCACHE_DIR="$ccache_dir" CCACHE_BASEDIR="$stage" CCACHE_NOHASHDIR=1 \
+    CCACHE_DIR="$ccache_dir" CCACHE_NOHASHDIR=1 \
     makepkg --config "$makepkg_config" --noconfirm --skippgpcheck
   runuser -u abi-build -- env CCACHE_DIR="$ccache_dir" ccache --show-stats 2>/dev/null \
     | grep -E 'Hits|Misses|Cache size' | sed "s/^/[$name ccache] /" || true

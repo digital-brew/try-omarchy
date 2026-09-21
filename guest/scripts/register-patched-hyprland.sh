@@ -269,9 +269,14 @@ download_verified() {
 download_verified "$url" "$sha256" "$source_cache"
 download_verified "$glaze_url" "$glaze_sha256" "$glaze_cache"
 
-stage=$(mktemp -d "$work/hyprland-package.XXXXXX")
+# A fixed staging path (not mktemp) keeps the compiler's absolute paths stable
+# between builds so ccache can reuse objects without rewriting paths, which
+# would change __FILE__ and the recorded binary digest.
+stage="$work/hyprland-package"
+rm -rf -- "$stage"
+mkdir -m 0700 "$stage"
 cleanup() {
-  if [[ -n ${stage:-} && -d $stage && $stage == "$work/"hyprland-package.* ]]; then
+  if [[ -n ${stage:-} && -d $stage && $stage == "$work/hyprland-package" ]]; then
     rm -rf -- "$stage"
   fi
 }
@@ -443,13 +448,12 @@ export CXXFLAGS="$CFLAGS"
 jobs=$(nproc 2>/dev/null || getconf NPROCESSORS_CONF)
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || fail "could not determine Hyprland build parallelism"
 # Compiled objects are cached in the persistent work volume across builds. The
-# staging directory is fresh each time, so hash paths relative to it and leave
-# the working directory out of the hash; the prefix maps above already make
-# the emitted paths independent of it, so cached objects are byte-identical to
-# a cold compile and the binary provenance check below still applies.
+# staging path is fixed, so a later build presents identical absolute paths and
+# flags and hits the cache; cached objects are byte-identical to a cold compile
+# and the binary provenance check below still applies.
 ccache_dir="$work/ccache/hyprland"
 mkdir -p "$ccache_dir"
-export CCACHE_DIR="$ccache_dir" CCACHE_BASEDIR="$stage" CCACHE_NOHASHDIR=1
+export CCACHE_DIR="$ccache_dir" CCACHE_NOHASHDIR=1
 ccache --zero-stats >/dev/null 2>&1 || true
 (
   cd "$source_root"
