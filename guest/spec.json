@@ -1220,10 +1220,12 @@
     },
     "storage": {
       "device": "virtio-blk-pci",
+      "discard": "unmap",
       "format": "raw",
       "mode": "ephemeral",
       "initialization": "apfs-clone",
       "fallback": "full-copy",
+      "fstrimTimer": "enabled",
       "expandedSizeMiB": 24576
     },
     "clipboard": {
