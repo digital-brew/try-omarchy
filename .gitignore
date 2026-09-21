@@ -22,3 +22,6 @@ __pycache__/
 /.build/
 /guest/.work/
 /macos/.swiftpm/
+
+# Local build overrides (see local.mk.example)
+/local.mk
