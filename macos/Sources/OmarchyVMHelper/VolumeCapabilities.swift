@@ -6,8 +6,8 @@ import Foundation
 /// sparsely, and serializes launches with a `lockf` advisory lock.
 ///
 /// Sparse files are the requirement that cannot be relaxed: on exFAT growing
-/// the disk allocates the whole working size up front, so a 64 GiB disk costs
-/// 64 GiB immediately instead of growing with use. Locking is why network
+/// the disk allocates the whole working size up front, so a 150 GiB disk costs
+/// 150 GiB immediately instead of growing with use. Locking is why network
 /// volumes are refused. Only local APFS provides both, so the start menu turns
 /// anything else away before QEMU is ever started.
 struct VolumeCapabilities: Equatable {

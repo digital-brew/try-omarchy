@@ -165,7 +165,7 @@ on this Mac; the default remains up to 8 cores. Memory defaults to 8 GiB on
 Macs with at least 16 GiB of RAM, and 4 GiB on smaller Macs. Custom allocations
 can leave as little as 4 GiB for macOS; higher choices carry a performance note.
 
-**Maximum disk size (GiB)** defaults to **64 GiB** for new launcher settings,
+**Maximum disk size (GiB)** defaults to **150 GiB** in this fork for new launcher settings,
 and supports capacities up to 8192 GiB.
 Mac storage is allocated as the guest writes data, rather than reserving the
 whole maximum in advance. For example, choosing 256 GiB does not immediately
@@ -175,7 +175,7 @@ the maximum is guest capacity, not a quota on backups or total app storage.
 Keep the displayed value to retain the current capacity. Larger values sparsely
 extend the stopped disk at the next launch; the guest grows its root partition
 and btrfs filesystem on boot. Existing disks cannot shrink. **Use Defaults**
-selects 64 GiB, or the existing capacity if larger. Previously saved settings
+selects 150 GiB, or the existing capacity if larger. Previously saved settings
 without a disk maximum retain their current capacity. For direct launcher
 script usage, set `OMARCHY_QEMU_GPU_DISK_GIB=256`.
 
@@ -625,6 +625,14 @@ An image is scaled to fill the frame and centred. The effect costs about
 opens the camera; `OMARCHY_QEMU_GPU_CAMERA_BACKGROUND` overrides the stored
 value for one launch. If the effect ever fails, frames continue unprocessed
 and the failure is logged.
+
+## VM disk size
+
+This fork assumes the Mac is dedicated to Try Omarchy, so **Maximum disk size**
+in Resources defaults to **150 GiB** instead of upstream's 64 GiB. The disk is
+sparse: it only occupies what the guest has written, and the guest grows its
+root filesystem on boot. Lower it in Resources → Configure… before the first
+launch if you share the Mac with other work; existing disks never shrink.
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)
