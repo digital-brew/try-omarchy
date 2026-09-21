@@ -85,7 +85,8 @@ class FetchSourceTests(unittest.TestCase):
         self.assertIn("Recovered verified Omarchy checkout", result.stdout)
         self.assertFalse((destination / ".git/shallow.lock").exists())
 
-    def test_does_not_rewrite_a_valid_but_wrong_checkout(self) -> None:
+    def test_moves_a_clean_checkout_at_another_commit_to_the_pin(self) -> None:
+        # What every Omarchy version bump leaves in the persistent work volume.
         destination = self.root / "checkout"
         subprocess.run(["git", "clone", "--quiet", str(self.origin), str(destination)], check=True)
         (destination / "later").write_text("later\n", encoding="utf-8")
@@ -93,6 +94,36 @@ class FetchSourceTests(unittest.TestCase):
         subprocess.run(["git", "-C", str(destination), "config", "user.name", "Test"], check=True)
         subprocess.run(["git", "-C", str(destination), "config", "user.email", "test@example.com"], check=True)
         subprocess.run(["git", "-C", str(destination), "commit", "--quiet", "-m", "later"], check=True)
+        later = subprocess.check_output(
+            ["git", "-C", str(destination), "rev-parse", "HEAD"], text=True
+        ).strip()
+
+        result = subprocess.run(
+            [str(FETCH_SOURCE), "--destination", str(destination), "--spec", str(self.spec)],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"Updating cached Omarchy checkout from {later} to {self.commit}", result.stdout)
+        self.assertIn("Recovered verified Omarchy checkout", result.stdout)
+        head = subprocess.check_output(["git", "-C", str(destination), "rev-parse", "HEAD"], text=True).strip()
+        self.assertEqual(head, self.commit)
+        # The local commit is left reachable; only the detached HEAD moved.
+        self.assertEqual(
+            subprocess.run(["git", "-C", str(destination), "cat-file", "-e", later], check=False).returncode, 0
+        )
+
+    def test_does_not_rewrite_a_checkout_with_local_changes(self) -> None:
+        destination = self.root / "checkout"
+        subprocess.run(["git", "clone", "--quiet", str(self.origin), str(destination)], check=True)
+        (destination / "later").write_text("later\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(destination), "add", "later"], check=True)
+        subprocess.run(["git", "-C", str(destination), "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", str(destination), "config", "user.email", "test@example.com"], check=True)
+        subprocess.run(["git", "-C", str(destination), "commit", "--quiet", "-m", "later"], check=True)
+        (destination / "scratch").write_text("dirty\n", encoding="utf-8")
 
         result = subprocess.run(
             [str(FETCH_SOURCE), "--destination", str(destination), "--spec", str(self.spec)],
@@ -103,7 +134,6 @@ class FetchSourceTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("is not the clean pinned Omarchy checkout", result.stderr)
-
 
 if __name__ == "__main__":
     unittest.main()
