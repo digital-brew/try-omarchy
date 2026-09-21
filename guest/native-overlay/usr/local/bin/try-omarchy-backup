@@ -64,6 +64,41 @@ if [[ $mode != packages ]]; then
   printf 'Saved home directory (%s) to %s\n' "$(du -h "$destination/home.tar.zst" | cut -f1)" "$destination/home.tar.zst"
 fi
 
+# Lerd databases: each registered site's database, exported with Lerd's own
+# tooling from the site directory (db:export defaults to that site's database).
+# Podman volumes themselves are deliberately not archived; the SQL dumps are
+# what try-omarchy-restore feeds back through db:import.
+lerd_registry="$HOME/.local/share/lerd/sites.yaml"
+if [[ $mode != packages ]] && command -v lerd >/dev/null 2>&1 && [[ -r $lerd_registry ]]; then
+  lerd_dir="$destination/lerd-databases"
+  mkdir -p "$lerd_dir"
+  : >"$lerd_dir/index.tsv"
+  lerd_exported=0
+  lerd_skipped=0
+  while IFS=$'\t' read -r site_name site_path; do
+    [[ -n $site_name && -d $site_path ]] || { lerd_skipped=$((lerd_skipped + 1)); continue; }
+    dump="$lerd_dir/${site_name//\//_}.sql"
+    if (cd "$site_path" && lerd db:export --no-pull -o "$dump" >/dev/null 2>&1) && [[ -s $dump ]]; then
+      printf '%s\t%s\n' "$site_name" "$site_path" >>"$lerd_dir/index.tsv"
+      lerd_exported=$((lerd_exported + 1))
+    else
+      rm -f -- "$dump"
+      lerd_skipped=$((lerd_skipped + 1))
+    fi
+  done < <(python3 - "$lerd_registry" <<'PY'
+import sys
+import yaml
+
+registry = yaml.safe_load(open(sys.argv[1])) or {}
+for site in registry.get("sites") or []:
+    if isinstance(site, dict) and site.get("name") and site.get("path"):
+        print(f"{site['name']}\t{site['path']}")
+PY
+)
+  printf 'Lerd: exported %d site database(s) to %s (%d site(s) without an exportable database)\n' \
+    "$lerd_exported" "$lerd_dir" "$lerd_skipped"
+fi
+
 python3 - "$destination/manifest.json" "$mode" <<'PY'
 import datetime, json, os, socket, subprocess, sys
 runtime = subprocess.run(["pacman", "-Q", "try-omarchy-runtime"], capture_output=True, text=True).stdout.strip()

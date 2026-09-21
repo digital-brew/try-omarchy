@@ -591,6 +591,7 @@ supply_chain_keys = {
     "archLinuxArmPackagesCommit",
     "archLinuxArmPackagesRepository",
     "hyprland",
+    "lerd",
     "mise",
     "omarchyPackagesCommit",
     "omarchyPackagesRepository",
@@ -777,6 +778,35 @@ if ghostty != {
     "signatureSha256": "5591816f6a52f03d1ea5be0129fcc396aeece7238419cdd36e511546ee242798"
 }:
     fail("Ghostty installer is not pinned to the reviewed signed ARM64 source build")
+lerd = exact_keys(
+    supply_chain.get("lerd"),
+    {
+        "binarySha256",
+        "commit",
+        "license",
+        "licenseSha256",
+        "licenseUrl",
+        "reportedVersion",
+        "repository",
+        "sha256",
+        "url",
+        "version",
+    },
+    "build spec lerd component",
+)
+if lerd != {
+    "version": "1.35.0",
+    "commit": "8af835bab4462974f94911f6964fd1934d8d944c",
+    "repository": "https://github.com/lerd-env/lerd",
+    "url": "https://github.com/lerd-env/lerd/releases/download/v1.35.0/lerd_1.35.0_linux_arm64.tar.gz",
+    "sha256": "88bc293fa25564f90fd8ff10f3c3c0f235b00e22471fb6ea2efb5cc76d6efc70",
+    "binarySha256": "afee76cf8adc9fe9fffdaa19c979319655c1dd58dfdb5f2966048f15957f8b5b",
+    "reportedVersion": "lerd version 1.35.0 (commit 8af835bab4462974f94911f6964fd1934d8d944c, built 2026-09-16T19:10:03Z)",
+    "license": "MIT",
+    "licenseUrl": "https://raw.githubusercontent.com/lerd-env/lerd/v1.35.0/LICENSE",
+    "licenseSha256": "eeeb22e0f4308d71cfbce833f57f7615f3a07c4c875ade83ef593d3337d41ab1",
+}:
+    fail("factory lerd component is not the reviewed ARM64 release")
 vivaldi = exact_keys(
     supply_chain.get("vivaldi"),
     {

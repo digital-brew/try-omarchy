@@ -587,7 +587,9 @@ routes aarch64-only names to the right repositories, falls back to the AUR,
 and lists anything that still failed instead of stopping. `--packages-only`
 and `--home-only` restrict either command; `--yes` skips the confirmation
 before the home directory is unpacked over the current one. Software installed
-outside pacman (1Password, Vivaldi, mise toolchains) is not captured.
+outside pacman (1Password, Vivaldi, mise toolchains) is not captured. Lerd
+site databases are exported per site by `try-omarchy-backup` and imported by
+`try-omarchy-restore`, or later with `--lerd-only` once `lerd install` has run.
 
 ## VM disk size
 
@@ -651,6 +653,15 @@ An image is scaled to fill the frame and centred. The effect costs about
 opens the camera; `OMARCHY_QEMU_GPU_CAMERA_BACKGROUND` overrides the stored
 value for one launch. If the effect ever fails, frames continue unprocessed
 and the failure is logged.
+
+## Lerd
+
+Try Omarchy ships [Lerd](https://github.com/lerd-env/lerd) pinned at
+`/usr/bin/lerd`, alongside rootless Podman and the unprivileged-port sysctl its
+per-site nginx binds 80 and 443 with. Run `lerd install` once per VM to create
+your per-user services and sites; `lerd update` defers to the binary baked into
+the image instead of replacing it.
+
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)
