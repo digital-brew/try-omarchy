@@ -789,6 +789,46 @@ individual component command).
 Artifacts created before their `.build/state/` record exists are rebuilt once;
 the cache never adopts an output whose successful inputs it did not observe.
 
+### Package lock refresh
+
+Arch Linux ARM mirrors are rolling, and the guest build refuses a
+`guest/packages.lock.json` that no longer matches them before it downloads
+anything. When a guest rebuild is about to run, `make guest` (and therefore
+`make build`) first re-resolves the transaction in the builder container and
+adopts the new lock, printing every version change. Review it with
+`git diff -- guest/packages.lock.json` and commit it with the build. Run
+`make refresh-lock` to do that step alone, or set `AUTO_REFRESH_LOCK=0` to
+keep the old failing-fast behaviour.
+
+### Compiler cache
+
+The guest stage compiles Hyprland and the two ABI pins (aquamarine and
+hyprtoolkit) on every guest rebuild. Their objects are cached with ccache in
+the persistent Docker work volume, so a rebuild that only changed the overlay
+or package set recompiles nothing. The cache is keyed on paths relative to the
+staging directory, and the prefix maps already make emitted paths independent
+of it, so cached objects are byte-identical and the recorded binary provenance
+still applies. `make clean` removes the volume together with the pacman cache.
+
+### Stable local signing
+
+`make build` ad-hoc signs by default, so macOS treats every rebuild as a new
+app: Accessibility and Camera permissions are asked again and the bridged
+networking daemon re-registers. Sign with one stable identity instead. Either
+use an "Apple Development" certificate from Xcode, or create a self-signed
+code-signing certificate once:
+
+```sh
+macos/create-development-signing-identity.sh          # creates "Try Omarchy Development"
+printf 'DEVELOPMENT_SIGN_IDENTITY = Try Omarchy Development\n' > local.mk
+```
+
+`local.mk` is read by the Makefile and ignored by git (see `local.mk.example`).
+Permissions granted to the first app signed this way carry over to every later
+build. The launcher also checks the assembled QEMU command line for duplicate
+backend and device ids before starting QEMU, so a bad merge fails with a named
+argument instead of a closed QMP socket after the window opens.
+
 The generated app lives under `dist/app.noindex/`. macOS can run and package
 the bundle normally, but Spotlight will not present it beside an installed
 copy as a second, indistinguishable Command-Space result. The first app rebuild
