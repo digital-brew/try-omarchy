@@ -692,6 +692,27 @@ per-site nginx binds 80 and 443 with. Run `lerd install` once per VM to create
 your per-user services and sites; `lerd update` defers to the binary baked into
 the image instead of replacing it.
 
+## Omarchy apps and aarch64 package sources
+
+The factory image preinstalls Omarchy's own applications (Omacalc, Omacut,
+Omawrite, Omasnap, Omatrack, Omazed, Herdr, Tensaku, Cliamp, Aether,
+LocalSend) from Omarchy's **edge** aarch64 channel; the stable aarch64 index
+holds only the keyring. The channel is configured sync-only, so nothing is ever
+selected or upgraded from it implicitly and the pinned Hyprland stack stays put.
+
+Install-menu entries that Arch Linux ARM cannot satisfy are routed to explicit
+sources by `omarchy-pkg-resolve-aarch64-sources` inside the guest:
+
+| App | Source |
+| --- | --- |
+| Ghostty | `omarchy-aarch64` (omarchy-mac builds; unsigned, opt-in) |
+| Obsidian | `omarchy-aarch64/obsidian-appimage` |
+| Minecraft | Prism Launcher from Arch Linux ARM (`prismlauncher`) |
+| Anything else only in the edge channel | `omarchy/<name>` |
+
+Edge, Spotify, Steam, LM Studio, and Heroic stay unavailable: no arm64 Linux
+builds exist.
+
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)
