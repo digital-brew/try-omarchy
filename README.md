@@ -569,6 +569,26 @@ menus stay in English: upstream has no translation mechanism for those shell
 scripts. The US keyboard layout remains the default input method; fcitx5 also
 includes Chewing (Bopomofo), reachable with `Ctrl + Space`.
 
+## Carrying your setup to a new VM
+
+Every new guest image gets a fresh VM, so the guest ships two commands that
+move your additions across. Enable the shared Mac folder first; the backup is
+written there, on the Mac, so it outlives any VM.
+
+```sh
+try-omarchy-backup            # in the old VM: added packages + home directory
+try-omarchy-restore           # in the new VM: reinstall, then restore home
+```
+
+`try-omarchy-backup` records the explicitly installed packages the factory
+image did not ship and archives your home directory without caches.
+`try-omarchy-restore` installs each package through `omarchy-pkg-add`, which
+routes aarch64-only names to the right repositories, falls back to the AUR,
+and lists anything that still failed instead of stopping. `--packages-only`
+and `--home-only` restrict either command; `--yes` skips the confirmation
+before the home directory is unpacked over the current one. Software installed
+outside pacman (1Password, Vivaldi, mise toolchains) is not captured.
+
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)
