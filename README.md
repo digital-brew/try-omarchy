@@ -449,6 +449,61 @@ never be smaller than the factory image it was cloned from. The size is fixed
 when the disk is created; growing a saved VM later is covered under
 **Growing an existing VM disk**.
 
+## Choosing the camera
+
+The camera bridge prefers the built-in FaceTime camera. To share another
+camera, name it by a fragment of its name or by its unique ID, once:
+
+```sh
+system_profiler SPCameraDataType          # list cameras
+defaults write dev.tryomarchy.native cameraDevice "HDM Webcam"
+```
+
+`OMARCHY_QEMU_GPU_CAMERA` in the environment overrides the stored choice for a
+single launch. The change applies the next time an Omarchy app opens the camera.
+
+### Camera resolution
+
+The bridge streams 1280×720 NV12 at 30 fps by default. A smaller format moves
+a quarter of the data per frame across the virtio channel and into the guest,
+which noticeably reduces video-call lag on a loaded VM:
+
+```sh
+defaults write dev.tryomarchy.native cameraFormat 640x480@30
+defaults delete dev.tryomarchy.native cameraFormat    # back to 1280x720@30
+```
+
+The value is `WIDTHxHEIGHT` or `WIDTHxHEIGHT@FPS`; both dimensions must be
+even and the Mac camera has to offer that exact size (`system_profiler
+SPCameraDataType` does not list sizes; 640×480, 1280×720 and 1920×1080 are
+available on every FaceTime HD and most USB cameras). `OMARCHY_QEMU_GPU_CAMERA_FORMAT`
+overrides the stored value for a single launch. The guest's `/dev/video42`
+adopts the new geometry on the next VM start, or as soon as no app has the
+camera open. The bridge also prepares the capture session at start-up, so the
+first call no longer waits for camera discovery.
+
+### Background blur or image
+
+Video-call apps inside the VM cannot blur or replace your background
+smoothly: their segmentation runs on the CPU because the VirGL guest offers no
+GPU compute, and the video stutters. The bridge can do it on the Mac instead,
+with Apple's person segmentation on the Neural Engine and a Core Image
+composite on the GPU, before the frame reaches the guest. Turn the app's own
+background effect off and set one of:
+
+```sh
+defaults write dev.tryomarchy.native cameraBackground blur           # default strength
+defaults write dev.tryomarchy.native cameraBackground blur:24        # stronger (1-80)
+defaults write dev.tryomarchy.native cameraBackground ~/Pictures/office.jpg
+defaults delete dev.tryomarchy.native cameraBackground               # off
+```
+
+An image is scaled to fill the frame and centred. The effect costs about
+12 ms per 640×480 frame on an M3 Max and applies the next time an Omarchy app
+opens the camera; `OMARCHY_QEMU_GPU_CAMERA_BACKGROUND` overrides the stored
+value for one launch. If the effect ever fails, frames continue unprocessed
+and the failure is logged.
+
 ## Browser rendering on VirGL
 
 Chromium-based browsers (Chromium, Chrome, Edge, Brave, and Vivaldi) composite
