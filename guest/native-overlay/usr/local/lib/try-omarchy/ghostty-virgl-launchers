@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Ghostty's package ships a desktop entry, a D-Bus activation service, and a
+# systemd user unit that all exec /usr/bin/ghostty directly. Ghostty needs a
+# newer desktop OpenGL than Try Omarchy's VirGL guest exposes, so the software
+# GL wrapper at /usr/local/bin/ghostty is bypassed when Ghostty starts from the
+# app launcher. Point those launch entries at the wrapper instead.
+
+set -euo pipefail
+
+cmdline_file=${OMARCHY_GHOSTTY_CMDLINE:-/proc/cmdline}
+if [[ ! -r $cmdline_file ]] || ! grep -qw omarchy.qemu_virgl=1 "$cmdline_file"; then
+  exit 0
+fi
+
+root=${OMARCHY_GHOSTTY_ROOT:-}
+if [[ ! -x $root/usr/local/bin/ghostty || ! -x $root/usr/bin/ghostty ]]; then
+  exit 0
+fi
+
+for launcher in \
+  "$root/usr/share/applications/com.mitchellh.ghostty.desktop" \
+  "$root/usr/share/dbus-1/services/com.mitchellh.ghostty.service" \
+  "$root/usr/lib/systemd/user/app-com.mitchellh.ghostty.service"; do
+  [[ -f $launcher ]] || continue
+  sed -i 's|^Exec=/usr/bin/ghostty|Exec=/usr/local/bin/ghostty|' "$launcher"
+  sed -i 's|^ExecStart=/usr/bin/ghostty|ExecStart=/usr/local/bin/ghostty|' "$launcher"
+done
+
+echo "Ghostty launch entries use the VirGL software-GL wrapper"
