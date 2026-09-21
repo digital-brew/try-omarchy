@@ -1,0 +1,89 @@
+#!/bin/bash
+# omarchy:summary=Reinstall your added packages and restore your home directory from a try-omarchy-backup
+# omarchy:args=[--home-only|--packages-only] [--yes] [SOURCE_DIR]
+#
+# Packages are installed one at a time through omarchy-pkg-add, which routes
+# aarch64-only names to the right repositories, and fall back to the AUR via
+# omarchy-pkg-aur-add. Anything that still fails is listed at the end rather
+# than stopping the restore. The home archive is unpacked over the current
+# home directory, so existing files with the same names are replaced.
+set -euo pipefail
+
+usage() {
+  sed -n '2,3p' "$0" | sed 's/^# omarchy:[a-z]*=//'
+  echo "Default source: /mnt/mac/try-omarchy-backup (requires the shared Mac folder)"
+}
+fail() { echo "try-omarchy-restore: $*" >&2; exit 1; }
+
+mode=all
+assume_yes=0
+source_dir=""
+while (($#)); do
+  case "$1" in
+    --home-only) mode=home ;;
+    --packages-only) mode=packages ;;
+    -y|--yes) assume_yes=1 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) fail "unknown option: $1" ;;
+    *) [[ -z $source_dir ]] || fail "only one source directory is accepted"; source_dir=$1 ;;
+  esac
+  shift
+done
+
+if [[ -z $source_dir ]]; then
+  mountpoint -q /mnt/mac || fail "the shared Mac folder is not mounted; enable it in the Try Omarchy start menu or pass a source directory"
+  source_dir=/mnt/mac/try-omarchy-backup
+fi
+[[ -d $source_dir ]] || fail "backup directory not found: $source_dir"
+source_dir=$(cd "$source_dir" && pwd -P)
+
+if [[ -r $source_dir/manifest.json ]]; then
+  python3 - "$source_dir/manifest.json" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))
+print(f"Backup from {m.get('createdAt', '?')} on {m.get('hostname', '?')} ({m.get('tryOmarchyRuntime', 'unknown runtime')})")
+PY
+fi
+
+if (( ! assume_yes )) && [[ $mode != packages ]] && [[ -f $source_dir/home.tar.zst ]]; then
+  read -r -p "Restore the home directory over $HOME, replacing files with the same names? [y/N] " answer
+  [[ $answer == [Yy]* ]] || { echo "Skipping the home directory (use --packages-only to silence this)."; mode=packages; }
+fi
+
+failed=()
+restored=0
+skipped=0
+if [[ $mode != home ]]; then
+  [[ -r $source_dir/packages.txt ]] || fail "packages.txt not found in $source_dir"
+  while IFS= read -r package; do
+    package=${package%%#*}
+    package=${package//[[:space:]]/}
+    [[ -n $package ]] || continue
+    if pacman -Qq "$package" >/dev/null 2>&1; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    echo "==> Installing $package"
+    if omarchy-pkg-add "$package" 2>/dev/null || omarchy-pkg-aur-add "$package"; then
+      restored=$((restored + 1))
+    else
+      failed+=("$package")
+    fi
+  done <"$source_dir/packages.txt"
+  printf 'Packages: %d installed, %d already present, %d failed\n' "$restored" "$skipped" "${#failed[@]}"
+fi
+
+if [[ $mode != packages ]]; then
+  [[ -r $source_dir/home.tar.zst ]] || fail "home.tar.zst not found in $source_dir"
+  tar --zstd -xf "$source_dir/home.tar.zst" -C "$HOME" || fail "home directory restore failed"
+  echo "Home directory restored from $source_dir/home.tar.zst"
+fi
+
+if (( ${#failed[@]} )); then
+  echo
+  echo "These packages could not be installed on this aarch64 guest:"
+  printf '  %s\n' "${failed[@]}"
+  echo "Install-menu apps outside pacman (1Password, Vivaldi, mise toolchains) must be set up again from the Install menu."
+  exit 2
+fi
+echo "Restore complete. Log out and back in so restored Hyprland and shell settings take effect."
