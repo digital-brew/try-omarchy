@@ -208,24 +208,58 @@ final class NativeCameraBridge: NSObject, AVCaptureVideoDataOutputSampleBufferDe
             mediaType: .video,
             position: .unspecified
         )
-        guard let device = discovery.devices.first(where: {
+        // A preferred camera can be named by unique ID or by a case-insensitive
+        // name fragment, through the OMARCHY_QEMU_GPU_CAMERA environment
+        // variable or the `cameraDevice` user default
+        // (`defaults write dev.tryomarchy.native cameraDevice "HDM Webcam"`).
+        // Otherwise the built-in FaceTime camera keeps its historical priority.
+        let preference = ProcessInfo.processInfo.environment["OMARCHY_QEMU_GPU_CAMERA"]
+            ?? UserDefaults.standard.string(forKey: "cameraDevice")
+        let preferred = preference.flatMap { wanted -> AVCaptureDevice? in
+            let trimmed = wanted.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            return discovery.devices.first { $0.uniqueID == trimmed }
+                ?? discovery.devices.first { $0.localizedName.localizedCaseInsensitiveContains(trimmed) }
+        }
+        guard let device = preferred ?? discovery.devices.first(where: {
             $0.localizedName.localizedCaseInsensitiveContains("FaceTime")
         }) ?? AVCaptureDevice.default(for: .video) else {
             throw HelperError.io("this Mac has no available camera")
         }
 
-        let targetFormat = device.formats.first { format in
+        // Pick the 720p format whose frame-rate range comes closest to the
+        // nominal rate. USB cameras report fixed ranges a hair under the
+        // nominal value (30000030 ticks per second reads as 29.99997 fps), so
+        // an exact `>= 30` test rejected every external camera; allow a small
+        // tolerance and prefer a range that truly contains the nominal rate.
+        let nominalRate = Double(NativeCameraWireFormat.framesPerSecond)
+        let rateTolerance = 0.5
+        var selection: (format: AVCaptureDevice.Format, range: AVFrameRateRange)?
+        for format in device.formats {
             let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
             guard dimensions.width == NativeCameraWireFormat.width,
-                  dimensions.height == NativeCameraWireFormat.height else { return false }
-            return format.videoSupportedFrameRateRanges.contains { range in
-                range.minFrameRate <= Double(NativeCameraWireFormat.framesPerSecond)
-                    && range.maxFrameRate >= Double(NativeCameraWireFormat.framesPerSecond)
+                  dimensions.height == NativeCameraWireFormat.height else { continue }
+            for range in format.videoSupportedFrameRateRanges {
+                guard range.minFrameRate <= nominalRate + rateTolerance,
+                      range.maxFrameRate >= nominalRate - rateTolerance else { continue }
+                let distance = abs(range.maxFrameRate - nominalRate)
+                if let current = selection, abs(current.range.maxFrameRate - nominalRate) <= distance {
+                    continue
+                }
+                selection = (format, range)
             }
         }
-        guard let targetFormat else {
+        guard let selection else {
             throw HelperError.io("the Mac camera does not support 1280×720 at 30 fps")
         }
+        let targetFormat = selection.format
+        // A fixed-rate range accepts only its own frame duration, so use the
+        // device's value unless the range genuinely contains the nominal rate.
+        let containsNominal = selection.range.minFrameRate <= nominalRate
+            && selection.range.maxFrameRate >= nominalRate
+        let frameDuration = containsNominal
+            ? CMTime(value: 1, timescale: CMTimeScale(NativeCameraWireFormat.framesPerSecond))
+            : selection.range.minFrameDuration
 
         let input = try AVCaptureDeviceInput(device: device)
         let output = AVCaptureVideoDataOutput()
@@ -250,10 +284,6 @@ final class NativeCameraBridge: NSObject, AVCaptureVideoDataOutputSampleBufferDe
         try device.lockForConfiguration()
         defer { device.unlockForConfiguration() }
         device.activeFormat = targetFormat
-        let frameDuration = CMTime(
-            value: 1,
-            timescale: CMTimeScale(NativeCameraWireFormat.framesPerSecond)
-        )
         device.activeVideoMinFrameDuration = frameDuration
         device.activeVideoMaxFrameDuration = frameDuration
         return (captureSession, device.localizedName)
