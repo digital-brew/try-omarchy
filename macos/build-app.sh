@@ -272,6 +272,7 @@ python3 "$repo_dir/guest/scripts/boot-fix-components.py" --payload "$repo_dir/gu
 python3 "$repo_dir/guest/scripts/migrate-boot-fixes.py" --manifest "$settings_payload"
 install -m 0644 "$macos_dir/network-identity.py" "$contents/Resources/scripts/network-identity.py"
 python3 "$repo_dir/integrations/build-bundle.py" "$contents/Resources/integrations"
+install -m 0755 "$macos_dir/qemu-args-lint.sh" "$contents/Resources/scripts/qemu-args-lint.sh"
 for guest_resource in \
   LICENSE.omarchy \
   SHA256SUMS \

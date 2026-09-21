@@ -1,0 +1,8 @@
+# Copy to local.mk (untracked) to persist local build settings.
+#
+# A stable signing identity keeps macOS permissions (Accessibility, Camera) and
+# the bridged-networking daemon registration across rebuilds; ad-hoc signing
+# ("-") makes every build look like a new app. Create one with
+#   macos/create-development-signing-identity.sh
+# or use an "Apple Development: ..." certificate from Xcode.
+DEVELOPMENT_SIGN_IDENTITY = Try Omarchy Development
