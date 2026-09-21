@@ -1869,6 +1869,27 @@ def main() -> None:
         and '"$root/usr/local/bin/ghostty"' in configure,
         "Ghostty VirGL wrapper forces software GL onto the pacman binary",
     )
+    ghostty_launchers = (
+        GUEST / "native-overlay/usr/local/lib/try-omarchy/ghostty-virgl-launchers"
+    )
+    ghostty_launchers_text = read(ghostty_launchers)
+    ghostty_launchers_hook = (
+        GUEST
+        / "native-overlay/usr/share/libalpm/hooks/90-try-omarchy-ghostty-virgl.hook"
+    )
+    ghostty_launchers_hook_text = read(ghostty_launchers_hook)
+    check(
+        ghostty_launchers.stat().st_mode & stat.S_IXUSR != 0
+        and "com.mitchellh.ghostty.desktop" in ghostty_launchers_text
+        and "com.mitchellh.ghostty.service" in ghostty_launchers_text
+        and "app-com.mitchellh.ghostty.service" in ghostty_launchers_text
+        and "omarchy.qemu_virgl=1" in ghostty_launchers_text
+        and "Target = usr/bin/ghostty" in ghostty_launchers_hook_text
+        and "Exec = /usr/local/lib/try-omarchy/ghostty-virgl-launchers"
+        in ghostty_launchers_hook_text
+        and '"$root/usr/local/lib/try-omarchy/ghostty-virgl-launchers"' in configure,
+        "Ghostty launch entries are repointed at the VirGL wrapper by the pacman hook",
+    )
     check(
         "/usr/local/bin/omarchy-native-cursor-restore 2>/dev/null || true"
         in read(screensaver_override),
