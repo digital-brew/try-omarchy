@@ -131,6 +131,11 @@ def main() -> None:
     )
     check(spec["runtime"]["storage"]["expandedSizeMiB"] == 153600, "working disk expands to 150 GiB")
     check(
+        spec["runtime"]["storage"].get("discard") == "unmap"
+        and "systemctl enable fstrim.timer" in read(GUEST / "scripts/finalize-rootfs.sh"),
+        "guest TRIM is passed through to the sparse host image and fstrim.timer is enabled",
+    )
+    check(
         set(spec["inputs"]) == {"packages", "packageLock", "pacmanConfig", "abiPackagePins", "packageRepositoryMirrors"},
         "spec has a minimal input set",
     )

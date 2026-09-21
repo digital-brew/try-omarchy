@@ -40,6 +40,8 @@ systemctl enable systemd-resolved.service
 # Advertise LAN services such as KDE Connect and LocalSend over mDNS.
 systemctl enable avahi-daemon.service
 systemctl enable systemd-timesyncd.service
+# Guest TRIM reaches the sparse APFS image through discard=unmap on the virtio disk.
+systemctl enable fstrim.timer
 systemctl enable try-omarchy-clock-recovery.timer
 
 # Avoid a systemctl introspection path that crashes under some ARM container

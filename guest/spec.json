@@ -623,16 +623,21 @@
       "activation": "always-on",
       "device": "virtserialport",
       "direction": "host-to-guest",
-      "guestSupplies": ["ADP0", "BAT0"],
+      "guestSupplies": [
+        "ADP0",
+        "BAT0"
+      ],
       "port": "dev.tryomarchy.battery",
       "protocolVersion": 1
     },
     "storage": {
       "device": "virtio-blk-pci",
+      "discard": "unmap",
       "format": "raw",
       "mode": "ephemeral",
       "initialization": "apfs-clone",
       "fallback": "full-copy",
+      "fstrimTimer": "enabled",
       "expandedSizeMiB": 153600
     },
     "clipboard": {

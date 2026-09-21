@@ -694,6 +694,7 @@ assert_line_pair "$test_root/resource-maximum-memory/qemu.log" -m 45056M
 run_scenario smaller-host-defaults 0 '' FAKE_HOST_CPUS=6 FAKE_HOST_MEMORY_BYTES=7516192768
 assert_line_pair "$test_root/smaller-host-defaults/qemu.log" -smp '6,sockets=1,cores=6,threads=1'
 assert_line_pair "$test_root/smaller-host-defaults/qemu.log" -m 4096M
+assert_contains "$(<"$test_root/smaller-host-defaults/qemu.log")" discard=unmap
 assert_line_pair "$test_root/smaller-host-defaults/qemu.log" -audiodev 'sdl,id=omarchy-audio,timer-period=1000'
 
 run_scenario too-many-cpus 1 '' OMARCHY_QEMU_GPU_CPUS=9
