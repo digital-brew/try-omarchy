@@ -52,7 +52,15 @@ if [[ -d $destination/.git ]]; then
       echo "Using verified Omarchy checkout at $destination"
       exit 0
     fi
-    fail "existing destination is not the clean pinned Omarchy checkout: $destination"
+    # A clean checkout of another pinned commit is what every Omarchy version
+    # bump leaves in the persistent work volume. Move it to the new pin
+    # instead of demanding a manual clean; local changes still stop the build.
+    [[ -z $(git -C "$destination" status --porcelain --untracked-files=all) ]] || \
+      fail "existing destination is not the clean pinned Omarchy checkout: $destination"
+    origin=$(git -C "$destination" remote get-url origin 2>/dev/null || true)
+    [[ ${origin%.git} == "${repository%.git}" ]] || \
+      fail "existing destination has an unexpected origin: $destination"
+    echo "Updating cached Omarchy checkout from $actual_commit to $commit"
   fi
 
   # A builder interrupted during the initial fetch leaves a valid repository
