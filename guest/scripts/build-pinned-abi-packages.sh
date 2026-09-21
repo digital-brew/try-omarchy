@@ -91,7 +91,14 @@ install -d -m 0755 "$output_repo"
 
 # Install build dependencies before either ABI pin. Hyprtoolkit then builds
 # against our verified aquamarine, never the incompatible mirror package.
-pacman -S --needed --noconfirm \
+# Sync and upgrade the throwaway builder first: the image bakes a package
+# database at image build time, and Arch Linux ARM mirrors drop a package file
+# as soon as a newer release replaces it, so a cached image would otherwise 404
+# here, and a database-only refresh would attempt a partial upgrade that
+# systemd's exact systemd-libs dependency refuses. The pins then link against
+# the same library versions the freshly resolved guest lock installs. Rust
+# stays at the Containerfile's pin so source-built components stay reproducible.
+pacman -Syu --needed --noconfirm --ignore rust \
   base-devel ccache cmake hyprutils hyprwayland-scanner libdisplay-info libdrm libglvnd \
   libinput mesa pixman seatd systemd-libs wayland wayland-protocols \
   cairo glib2 hyprgraphics hyprlang iniparser libxkbcommon pango >/dev/null

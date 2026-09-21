@@ -212,6 +212,7 @@ def main() -> None:
         and "write-builder-pacman-conf.py" in read(GUEST / "scripts/refresh-package-lock.sh")
         and "build-pinned-abi-packages.sh" in read(GUEST / "build.sh")
         and "build-pinned-abi-packages.sh" in read(GUEST / "scripts/refresh-package-lock.sh")
+        and "pacman -Syu --needed --noconfirm --ignore rust" in build_aquamarine
         and "download digest mismatch" in build_aquamarine
         and "reproducible library digest mismatch" in build_aquamarine
         and "ABI source archive has an unsafe member set" in build_aquamarine,
