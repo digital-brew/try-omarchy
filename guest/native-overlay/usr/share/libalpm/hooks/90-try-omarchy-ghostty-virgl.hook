@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/bin/ghostty
+
+[Action]
+Description = Pointing Ghostty launch entries at the Try Omarchy VirGL wrapper...
+When = PostTransaction
+Exec = /usr/local/lib/try-omarchy/ghostty-virgl-launchers
