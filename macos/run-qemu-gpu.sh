@@ -1771,6 +1771,10 @@ if [[ $QEMU_SELECTED_STORAGE_MODE == persistent ]]; then
   )
 fi
 
+# Refuse a command line QEMU would only reject after its window opened.
+"$script_dir/qemu-args-lint.sh" "${qemu_args[@]}" ||
+  fail "the assembled QEMU command line failed its sanity check"
+
 if [[ ${OMARCHY_QEMU_GPU_DRY_RUN:-0} == 1 ]]; then
   printf '[qemu-gpu] dry-run command:' >&2
   printf ' %q' "$qemu_bin" "${qemu_args[@]}" >&2

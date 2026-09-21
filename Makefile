@@ -13,15 +13,22 @@ DEVELOPMENT_SIGN_IDENTITY ?= -
 PACKAGE_SIGN_IDENTITY ?= $(RELEASE_SIGN_IDENTITY)
 PACKAGE_NOTARY_PROFILE ?= $(RELEASE_NOTARY_PROFILE)
 FORCE ?= 0
+# Refresh the package lock before a guest rebuild when the Arch Linux ARM
+# mirrors have moved on since it was recorded (AUTO_REFRESH_LOCK=0 disables).
+AUTO_REFRESH_LOCK ?= 1
+override LOCK_REVIEW := $(ROOT)/.build/packages.lock.refreshed.json
+# Local, untracked overrides such as DEVELOPMENT_SIGN_IDENTITY (see local.mk.example).
+-include $(ROOT)/local.mk
 
 .DEFAULT_GOAL := help
-.PHONY: help doctor test guest runtime app build run run-ephemeral reset update-omarchy version-preflight package package-preflight release release-preflight clean clean-all clean-guest
+.PHONY: help doctor test guest runtime app build run run-ephemeral reset update-omarchy version-preflight package package-preflight release release-preflight clean clean-all clean-guest refresh-lock
 
 help:
 	@printf '%s\n' \
 	  'Try Omarchy — native macOS build commands' \
 	  '' \
 	  '  make doctor         Check the local toolchain' \
+	  '  make refresh-lock   Re-resolve guest/packages.lock.json against current mirrors' \
 	  '  make test           Run native and guest contract tests' \
 	  '  make build          Build only changed guest, runtime, and app inputs' \
 	  '  make build FORCE=1  Rebuild every component' \
@@ -50,6 +57,13 @@ doctor:
 	@major=$$(sw_vers -productVersion | cut -d. -f1); (( major >= 26 )) || { echo 'error: macOS 26 or newer is required' >&2; exit 1; }
 	@for tool in curl docker pkg-config python3 swift xcrun; do command -v "$$tool" >/dev/null || { echo "error: $$tool is required" >&2; exit 1; }; done
 	@docker info >/dev/null 2>&1 || { echo 'error: Docker is installed but not running' >&2; exit 1; }
+	@context=$$(docker context show 2>/dev/null); case "$$context" in \
+	  colima) profile=default ;; colima-*) profile=$${context#colima-} ;; *) profile= ;; esac; \
+	  if [[ -n "$$profile" ]] && command -v colima >/dev/null; then \
+	    colima -p "$$profile" ssh -- test -f "$(ROOT)/Makefile" >/dev/null 2>&1 || { \
+	      echo "error: Colima profile '$$profile' does not mount $(ROOT); the guest build bind-mounts this checkout." >&2; \
+	      echo "       Restart it with the volume shared, e.g. colima -p $$profile stop && colima -p $$profile start --mount $(ROOT):w" >&2; \
+	      exit 1; }; fi
 	@printf 'Toolchain ready: %s (%s)\n' "$$(sw_vers -productVersion)" "$$(uname -m)"
 
 test:
@@ -70,6 +84,7 @@ test:
 	@bash $(ROOT)/macos/Tests/network-helper.test.sh
 	@bash $(ROOT)/macos/Tests/qemu-networking.test.sh
 	@$(ROOT)/macos/Tests/qemu-port-forwarding.test.sh
+	@$(ROOT)/macos/Tests/qemu-args-lint.test.sh
 	@$(ROOT)/macos/Tests/run-qemu-ssh-contract.test.sh
 	@$(ROOT)/macos/Tests/qemu-memory-contract.test.sh
 	@$(ROOT)/macos/Tests/qemu-power-actions.test.sh
@@ -78,9 +93,23 @@ test:
 	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/macos/Tests/resize-vm-disk.test.py"
 
 guest:
+	@if [[ "$(AUTO_REFRESH_LOCK)" == 1 ]]; then \
+	  OMARCHY_FORCE_BUILD="$(FORCE)" "$(BUILD_CACHE)" --check \
+	    --root "$(ROOT)" --state-dir "$(BUILD_STATE)" guest -- \
+	    "$(ROOT)/guest/build-container.sh" --output "$(GUEST_DIST)"; status=$$?; \
+	  if (( status == 3 )); then $(MAKE) -s refresh-lock; elif (( status != 0 )); then exit $$status; fi; fi
 	@OMARCHY_FORCE_BUILD="$(FORCE)" "$(BUILD_CACHE)" \
 	  --root "$(ROOT)" --state-dir "$(BUILD_STATE)" guest -- \
 	  "$(ROOT)/guest/build-container.sh" --output "$(GUEST_DIST)"
+
+# Rolling Arch Linux ARM mirrors replace package versions daily, and the guest
+# build refuses a lock that no longer matches the mirrors before downloading
+# anything. Resolve the transaction again and adopt it when it differs.
+refresh-lock:
+	@echo '[refresh-lock] resolving the guest package transaction against current mirrors'
+	@$(ROOT)/guest/build-container.sh --refresh-package-lock "$(LOCK_REVIEW)"
+	@python3 "$(ROOT)/guest/scripts/adopt-package-lock.py" \
+	  --lock "$(ROOT)/guest/packages.lock.json" --refreshed "$(LOCK_REVIEW)"
 
 runtime:
 	@OMARCHY_FORCE_BUILD="$(FORCE)" "$(BUILD_CACHE)" \

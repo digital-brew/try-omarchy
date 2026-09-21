@@ -116,7 +116,10 @@ class BuildCacheTests(unittest.TestCase):
             stderr=subprocess.STDOUT,
             text=True,
         ).stdout
-        self.assertEqual(3, forced.count('OMARCHY_FORCE_BUILD="1"'))
+        # guest --check, guest, runtime, app
+        self.assertEqual(4, forced.count('OMARCHY_FORCE_BUILD="1"'))
+        self.assertLess(forced.index(" --check "), forced.index(" guest --"))
+        self.assertIn("refresh-lock", forced)
 
         invalid_release = subprocess.run(
             ["make", "release", "RELEASE_SIGN_IDENTITY=invalid"],
@@ -351,6 +354,24 @@ class BuildCacheTests(unittest.TestCase):
             self.assertTrue((state_dir / "guest.json").is_file())
 
             invoke()
+            self.assertEqual("1", (root / "build-count").read_text().strip())
+
+            # --check reports the decision without building or stamping.
+            command = [sys.executable, "-c", FAKE_GUEST_BUILDER, str(root), "good"]
+            with redirect_stdout(io.StringIO()):
+                self.assertFalse(
+                    build_cache.run(root, state_dir, "guest", command, False, check_only=True)
+                )
+            build_input.write_text("checked\n")
+            with redirect_stdout(io.StringIO()):
+                self.assertTrue(
+                    build_cache.run(root, state_dir, "guest", command, False, check_only=True)
+                )
+            self.assertEqual("1", (root / "build-count").read_text().strip())
+            with redirect_stdout(io.StringIO()):
+                self.assertTrue(
+                    build_cache.run(root, state_dir, "guest", command, True, check_only=True)
+                )
             self.assertEqual("1", (root / "build-count").read_text().strip())
 
             build_input.write_text("edited\n")

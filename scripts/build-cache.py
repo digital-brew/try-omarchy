@@ -509,9 +509,38 @@ def force_requested(argument: bool) -> bool:
     return argument or value in {"1", "true", "yes"}
 
 
+def is_up_to_date(
+    root: Path, state_path: Path, component: str, fingerprint_value: str
+) -> bool:
+    previous = read_state(state_path)
+    if (
+        previous is None
+        or previous.get("component") != component
+        or previous.get("fingerprint") != fingerprint_value
+    ):
+        return False
+    try:
+        validate_outputs(root, component, previous)
+    except CacheError as error:
+        print(f"[build-cache] {component} is stale: {error}")
+        return False
+    return True
+
+
 def run(
-    root: Path, state_dir: Path, component: str, command: list[str], force: bool
-) -> None:
+    root: Path,
+    state_dir: Path,
+    component: str,
+    command: list[str],
+    force: bool,
+    check_only: bool = False,
+) -> bool:
+    """Build `component` unless it is cached; return whether a build was needed.
+
+    With `check_only`, report the decision without running the command, so a
+    caller can do preparatory work (such as refreshing the package lock) only
+    when a rebuild is actually about to happen.
+    """
     if not command:
         raise CacheError("a build command is required after --")
     if state_dir != root / ".build/state":
@@ -523,20 +552,12 @@ def run(
     with lock_path.open("a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         before = fingerprint(root, component, command)
-        previous = read_state(state_path)
-        if (
-            not force
-            and previous is not None
-            and previous.get("component") == component
-            and previous.get("fingerprint") == before
-        ):
-            try:
-                validate_outputs(root, component, previous)
-            except CacheError as error:
-                print(f"[build-cache] {component} is stale: {error}")
-            else:
-                print(f"[build-cache] {component} is up to date")
-                return
+        if not force and is_up_to_date(root, state_path, component, before):
+            print(f"[build-cache] {component} is up to date")
+            return False
+        if check_only:
+            print(f"[build-cache] {component} needs a rebuild")
+            return True
 
         reason = "forced" if force else "inputs or outputs changed"
         print(f"[build-cache] rebuilding {component}: {reason}", flush=True)
@@ -563,6 +584,7 @@ def run(
             },
         )
         print(f"[build-cache] recorded successful {component} build")
+        return True
 
 
 def parse_args() -> argparse.Namespace:
@@ -570,6 +592,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--state-dir", required=True, type=Path)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="exit 0 if the component is up to date, 3 if it needs a rebuild; do not build",
+    )
     parser.add_argument("component", choices=("guest", "runtime", "app"))
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
@@ -584,7 +611,16 @@ def main() -> None:
     state_dir = args.state_dir.resolve()
     if not root.is_dir():
         raise CacheError(f"repository root is missing: {root}")
-    run(root, state_dir, args.component, args.command, force_requested(args.force))
+    needs_build = run(
+        root,
+        state_dir,
+        args.component,
+        args.command,
+        force_requested(args.force),
+        check_only=args.check,
+    )
+    if args.check and needs_build:
+        raise SystemExit(3)
 
 
 if __name__ == "__main__":

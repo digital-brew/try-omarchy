@@ -59,6 +59,7 @@ if grep -Fq '/private/tmp/omarchy-qemu-gpu.' "$resources/scripts/run-qemu-gpu.sh
 fi
 /bin/cp "$macos_dir/qemu-port-forwarding.sh" "$resources/scripts/qemu-port-forwarding.sh"
 /bin/cp "$macos_dir/qemu-networking.sh" "$resources/scripts/qemu-networking.sh"
+/bin/cp "$macos_dir/qemu-args-lint.sh" "$resources/scripts/qemu-args-lint.sh"
 chmod 755 "$resources/scripts/run-qemu-gpu.sh"
 chmod 644 "$resources/scripts/qemu-port-forwarding.sh"
 
