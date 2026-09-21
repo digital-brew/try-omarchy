@@ -23,21 +23,120 @@ struct NativeCameraBridgeTests {
         #expect(message.suffix(payload.count) == payload)
     }
 
-    @Test("camera format is 720p NV12")
-    func fixedFormat() {
-        #expect(NativeCameraWireFormat.width == 1280)
-        #expect(NativeCameraWireFormat.height == 720)
-        #expect(NativeCameraWireFormat.framesPerSecond == 30)
+    @Test("camera format defaults to 720p NV12")
+    func defaultFormat() {
+        let format = NativeCameraFrameFormat.default
+        #expect(format.width == 1280)
+        #expect(format.height == 720)
+        #expect(format.framesPerSecond == 30)
         #expect(NativeCameraWireFormat.pixelFormat == "NV12")
-        #expect(NativeCameraWireFormat.frameBytes == 1_382_400)
-        #expect(NativeCameraWireFormat.captureSessionPreset == .hd1280x720)
-        let settings = NativeCameraWireFormat.videoSettings()
+        #expect(format.frameBytes == 1_382_400)
+        #expect(format.captureSessionPreset == .hd1280x720)
+        #expect(format.label == "1280x720@30")
+        let settings = format.videoSettings()
         #expect(
             settings[kCVPixelBufferPixelFormatTypeKey as String] as? Int
                 == Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
         )
         #expect(settings[kCVPixelBufferWidthKey as String] as? Int == 1280)
         #expect(settings[kCVPixelBufferHeightKey as String] as? Int == 720)
+    }
+
+    @Test("camera format parses WIDTHxHEIGHT[@FPS] and rejects odd or absurd sizes")
+    func parseFormat() {
+        let vga = NativeCameraFrameFormat.parse("640x480@30")
+        #expect(vga == NativeCameraFrameFormat(width: 640, height: 480, framesPerSecond: 30))
+        #expect(vga?.frameBytes == 460_800)
+        #expect(vga?.captureSessionPreset == .vga640x480)
+        #expect(NativeCameraFrameFormat.parse(" 1920X1080 ")?.framesPerSecond == 30)
+        #expect(NativeCameraFrameFormat.parse("1920x1080")?.captureSessionPreset == .hd1920x1080)
+        #expect(NativeCameraFrameFormat.parse("848x480@24")?.captureSessionPreset == .high)
+        #expect(NativeCameraFrameFormat.parse("960x540")?.captureSessionPreset == .qHD960x540)
+        #expect(NativeCameraFrameFormat.parse("641x480") == nil)
+        #expect(NativeCameraFrameFormat.parse("640x480@0") == nil)
+        #expect(NativeCameraFrameFormat.parse("640x480@30@1") == nil)
+        #expect(NativeCameraFrameFormat.parse("8000x480") == nil)
+        #expect(NativeCameraFrameFormat.parse("720p") == nil)
+        #expect(NativeCameraFrameFormat.parse("") == nil)
+    }
+
+    @Test("camera format prefers the environment, then the stored default, and warns on garbage")
+    func configuredFormat() {
+        #expect(
+            NativeCameraFrameFormat.configured(environment: [:], storedValue: nil, warn: { _ in })
+                == .default
+        )
+        #expect(
+            NativeCameraFrameFormat.configured(
+                environment: [NativeCameraFrameFormat.environmentKey: "640x480"],
+                storedValue: "1920x1080",
+                warn: { _ in }
+            ).width == 640
+        )
+        #expect(
+            NativeCameraFrameFormat.configured(environment: [:], storedValue: "1920x1080@30", warn: { _ in })
+                .height == 1080
+        )
+        var warnings: [String] = []
+        let fallback = NativeCameraFrameFormat.configured(
+            environment: [:],
+            storedValue: "huge",
+            warn: { warnings.append($0) }
+        )
+        #expect(fallback == .default)
+        #expect(warnings.count == 1)
+        #expect(warnings.first?.contains("huge") == true)
+    }
+
+    @Test("camera background parses none, blur with radius, and image paths")
+    func backgroundParsing() {
+        #expect(NativeCameraBackground.parse("none") == .none)
+        #expect(NativeCameraBackground.parse("OFF") == .none)
+        #expect(NativeCameraBackground.parse("blur") == .blur(radius: NativeCameraBackground.defaultBlurRadius))
+        #expect(NativeCameraBackground.parse("blur:20") == .blur(radius: 20))
+        #expect(NativeCameraBackground.parse("blur=4.5") == .blur(radius: 4.5))
+        #expect(NativeCameraBackground.parse("blur:0") == nil)
+        #expect(NativeCameraBackground.parse("blur:500") == nil)
+        #expect(NativeCameraBackground.parse("blur:abc") == nil)
+        #expect(NativeCameraBackground.parse("/tmp/office.jpg") == .image(URL(fileURLWithPath: "/tmp/office.jpg")))
+        #expect(NativeCameraBackground.parse("image:/tmp/office.jpg") == .image(URL(fileURLWithPath: "/tmp/office.jpg")))
+        #expect(NativeCameraBackground.parse("~/office.jpg")?.label.hasPrefix("image:/") == true)
+        #expect(NativeCameraBackground.parse("office.jpg") == nil)
+        #expect(NativeCameraBackground.parse("") == nil)
+        #expect(NativeCameraBackground.blur(radius: 12.4).label == "blur:12")
+        #expect(NativeCameraBackground.none.label == "none")
+    }
+
+    @Test("camera background prefers the environment, then the stored default, and warns on garbage")
+    func configuredBackground() {
+        #expect(NativeCameraBackground.configured(environment: [:], storedValue: nil, warn: { _ in }) == .none)
+        #expect(
+            NativeCameraBackground.configured(
+                environment: [NativeCameraBackground.environmentKey: "blur"],
+                storedValue: "/tmp/office.jpg",
+                warn: { _ in }
+            ) == .blur(radius: NativeCameraBackground.defaultBlurRadius)
+        )
+        var warnings: [String] = []
+        #expect(NativeCameraBackground.configured(environment: [:], storedValue: "sparkles", warn: { warnings.append($0) }) == .none)
+        #expect(warnings.count == 1)
+    }
+
+    @Test("guest requests carry the loopback geometry and may ask for a status refresh")
+    func guestRequests() {
+        let preferred = NativeCameraFrameFormat(width: 640, height: 480, framesPerSecond: 30)
+        #expect(NativeCameraGuestRequest.parse(["type": "start"], preferred: preferred) == .start(preferred))
+        #expect(
+            NativeCameraGuestRequest.parse(["type": "start", "width": 1280, "height": 720], preferred: preferred)
+                == .start(NativeCameraFrameFormat(width: 1280, height: 720, framesPerSecond: 30))
+        )
+        #expect(NativeCameraGuestRequest.parse(["type": "stop"], preferred: preferred) == .stop)
+        #expect(NativeCameraGuestRequest.parse(["type": "status"], preferred: preferred) == .status)
+        #expect(NativeCameraGuestRequest.parse(["type": "start", "width": 641, "height": 480], preferred: preferred) == nil)
+        #expect(NativeCameraGuestRequest.parse(["type": "start", "width": 640], preferred: preferred) == nil)
+        #expect(NativeCameraGuestRequest.parse(["type": "stop", "width": 640, "height": 480], preferred: preferred) == nil)
+        #expect(NativeCameraGuestRequest.parse(["type": "reboot"], preferred: preferred) == nil)
+        #expect(NativeCameraGuestRequest.parse(["width": 640], preferred: preferred) == nil)
     }
 
     @Test("active session failures reconnect the bridge")
