@@ -112,13 +112,16 @@ if [[ -n $refresh_package_lock ]]; then
   lock_parent=$(dirname "$refresh_package_lock")
   mkdir -p "$lock_parent"
   lock_parent=$(cd "$lock_parent" && pwd)
+  # Share the persistent work volume so the refresh reuses cached downloads.
+  docker volume create --label dev.tryomarchy.role=guest-work "$work_volume" >/dev/null
   docker run --rm --platform linux/arm64 \
     --entrypoint /workspace/guest/scripts/refresh-package-lock.sh \
     -e OMARCHY_PACMAN_DISABLE_SANDBOX=1 \
     -v "$repo_dir:/workspace:ro" \
     -v "$lock_parent:/lock-output" \
+    -v "$work_volume:/work" \
     "$builder_image" \
-    --spec "$container_spec" --output "/lock-output/$lock_name"
+    --spec "$container_spec" --output "/lock-output/$lock_name" --work /work
   exit 0
 fi
 
