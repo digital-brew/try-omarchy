@@ -1,14 +1,38 @@
 --- a/bin/omarchy-pkg-add
 +++ b/bin/omarchy-pkg-add
-@@ -4,6 +4,11 @@
- # omarchy:args=<packages...>
+@@ -5,17 +5,32 @@
  # omarchy:examples=omarchy pkg add jq ripgrep
  # omarchy:requires-sudo=true
-+
+ 
 +# Try Omarchy: refuse known aarch64-unavailable Install-menu packages.
 +if [[ -x /usr/local/bin/omarchy-pkg-refuse-aarch64-unavailable ]]; then
 +  /usr/local/bin/omarchy-pkg-refuse-aarch64-unavailable "$@" || exit $?
 +fi
- 
++
++# Try Omarchy: names that exist only in the sync-only aarch64 repositories
++# ([omarchy] edge, [omarchy-aarch64]) are rewritten to explicit repo/name
++# targets; everything else passes through unchanged.
++targets=("$@")
++if [[ -x /usr/local/bin/omarchy-pkg-resolve-aarch64-sources ]]; then
++  mapfile -t targets < <(/usr/local/bin/omarchy-pkg-resolve-aarch64-sources "$@")
++  (( ${#targets[@]} > 0 )) || targets=("$@")
++fi
++
  if omarchy-pkg-missing "$@"; then
    if (( EUID == 0 )); then
+-    pacman -S --noconfirm --needed "$@" || exit 1
++    pacman -S --noconfirm --needed "${targets[@]}" || exit 1
+   else
+-    sudo pacman -S --noconfirm --needed "$@" || exit 1
++    sudo pacman -S --noconfirm --needed "${targets[@]}" || exit 1
+   fi
+ fi
+ 
+ for pkg in "$@"; do
+   # Secondary check to handle states where pacman doesn't actually register an error
+-  if ! pacman -Q "$pkg" &>/dev/null; then
++  # pacman -T also accepts a provider (obsidian-appimage provides obsidian).
++  if ! pacman -Q "$pkg" &>/dev/null && ! pacman -T "$pkg" &>/dev/null; then
+     echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2
+     exit 1
+   fi
