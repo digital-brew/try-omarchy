@@ -1,0 +1,79 @@
+#!/bin/bash
+# omarchy:summary=Save your added packages and home directory so a fresh Try Omarchy VM can restore them
+# omarchy:args=[--home-only|--packages-only] [DESTINATION_DIR]
+#
+# Try Omarchy creates a new VM for every new guest image, so anything you set
+# up lives only in that VM. This writes what a fresh VM needs to carry on:
+#   packages.txt  explicitly installed packages beyond the factory image
+#   home.tar.zst  your home directory without caches
+#   manifest.json when and where the backup was taken
+# The default destination is the shared Mac folder (/mnt/mac), so the backup
+# is on the Mac and outlives the VM. Restore with try-omarchy-restore.
+set -euo pipefail
+
+usage() {
+  sed -n '2,3p' "$0" | sed 's/^# omarchy:[a-z]*=//'
+  echo "Default destination: /mnt/mac/try-omarchy-backup (requires the shared Mac folder)"
+}
+fail() { echo "try-omarchy-backup: $*" >&2; exit 1; }
+
+mode=all
+destination=""
+while (($#)); do
+  case "$1" in
+    --home-only) mode=home ;;
+    --packages-only) mode=packages ;;
+    -h|--help) usage; exit 0 ;;
+    -*) fail "unknown option: $1" ;;
+    *) [[ -z $destination ]] || fail "only one destination directory is accepted"; destination=$1 ;;
+  esac
+  shift
+done
+
+if [[ -z $destination ]]; then
+  mountpoint -q /mnt/mac || fail "the shared Mac folder is not mounted; enable it in the Try Omarchy start menu or pass a destination directory"
+  destination=/mnt/mac/try-omarchy-backup
+fi
+mkdir -p "$destination" || fail "cannot create $destination"
+destination=$(cd "$destination" && pwd -P)
+
+factory_list=/usr/share/try-omarchy/packages.lock.txt
+[[ -r $factory_list ]] || fail "factory package list not found: $factory_list"
+
+if [[ $mode != home ]]; then
+  # Explicitly installed packages that the factory image did not ship. Both
+  # repository and AUR packages are listed; the restore decides how to get each.
+  comm -23 \
+    <(pacman -Qqe | LC_ALL=C sort) \
+    <(awk '{ print $1 }' "$factory_list" | LC_ALL=C sort) \
+    >"$destination/packages.txt"
+  printf 'Saved %s added package(s) to %s\n' "$(wc -l <"$destination/packages.txt" | tr -d ' ')" "$destination/packages.txt"
+fi
+
+if [[ $mode != packages ]]; then
+  # Caches are rebuilt on use; Trash is noise; the Mac share link points at the
+  # destination itself. Symlinks are stored as symlinks, never followed.
+  tar --zstd -cf "$destination/home.tar.zst" -C "$HOME" \
+    --exclude=./.cache \
+    --exclude=./.local/share/Trash \
+    --exclude=./.npm/_cacache \
+    --exclude=./.cargo/registry \
+    --exclude=./.local/share/containers \
+    --exclude-caches-all \
+    . || fail "home directory archive failed"
+  printf 'Saved home directory (%s) to %s\n' "$(du -h "$destination/home.tar.zst" | cut -f1)" "$destination/home.tar.zst"
+fi
+
+python3 - "$destination/manifest.json" "$mode" <<'PY'
+import datetime, json, os, socket, subprocess, sys
+runtime = subprocess.run(["pacman", "-Q", "try-omarchy-runtime"], capture_output=True, text=True).stdout.strip()
+json.dump({
+    "schemaVersion": 1,
+    "createdAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+    "hostname": socket.gethostname(),
+    "user": os.environ.get("USER", ""),
+    "tryOmarchyRuntime": runtime,
+    "mode": sys.argv[2],
+}, open(sys.argv[1], "w"), indent=2)
+PY
+echo "Backup complete. In a fresh VM run: try-omarchy-restore${destination:+ $destination}"

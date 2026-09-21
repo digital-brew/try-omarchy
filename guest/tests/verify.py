@@ -1825,6 +1825,22 @@ def main() -> None:
         and '"$root/usr/local/bin/xdg-terminal-exec"' in configure,
         "xdg-terminal-exec honors Omarchy's supported terminal preference list",
     )
+    backup_command = GUEST / "native-overlay/usr/local/bin/try-omarchy-backup"
+    restore_command = GUEST / "native-overlay/usr/local/bin/try-omarchy-restore"
+    backup_text = read(backup_command)
+    restore_text = read(restore_command)
+    check(
+        backup_command.stat().st_mode & stat.S_IXUSR != 0
+        and restore_command.stat().st_mode & stat.S_IXUSR != 0
+        and "/usr/share/try-omarchy/packages.lock.txt" in backup_text
+        and "pacman -Qqe" in backup_text
+        and "mountpoint -q /mnt/mac" in backup_text
+        and 'omarchy-pkg-add "$package" 2>/dev/null || omarchy-pkg-aur-add "$package"' in restore_text
+        and "could not be installed on this aarch64 guest" in restore_text
+        and '"$root/usr/local/bin/try-omarchy-backup"' in configure
+        and '"$root/usr/local/bin/try-omarchy-restore"' in configure,
+        "try-omarchy-backup and try-omarchy-restore carry added packages (with AUR fallback) and the home directory between VMs",
+    )
     kitty_wrapper = GUEST / "native-overlay/usr/local/bin/kitty"
     kitty_wrapper_text = read(kitty_wrapper)
     check(kitty_wrapper.stat().st_mode & stat.S_IXUSR != 0, "Kitty VirGL wrapper is executable")
