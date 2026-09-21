@@ -219,8 +219,8 @@
     "packageLock": "packages.lock.json",
     "pacmanConfig": "pacman.aarch64.conf",
     "packageRepositoryMirrors": [
-      "https://ca.us.mirror.archlinuxarm.org/aarch64",
-      "https://de3.mirror.archlinuxarm.org/aarch64"
+      "https://de3.mirror.archlinuxarm.org/aarch64",
+      "https://ca.us.mirror.archlinuxarm.org/aarch64"
     ],
     "abiPackagePins": [
       {
