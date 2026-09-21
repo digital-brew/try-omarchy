@@ -66,6 +66,7 @@ pinch_patch="$native_dir/patches/qemu-cocoa-pinch-zoom.patch"
 precise_scroll_patch="$native_dir/patches/qemu-cocoa-precise-scroll.patch"
 iso_swap_patch="$native_dir/patches/qemu-cocoa-iso-section-grave-swap.patch"
 injected_text_patch="$native_dir/patches/qemu-cocoa-injected-text.patch"
+media_keys_patch="$native_dir/patches/qemu-cocoa-media-keys.patch"
 audio_device_patch="$native_dir/patches/qemu-sdl-audio-device-selection.patch"
 audio_recovery_patch="$native_dir/patches/qemu-hda-full-ring-recovery.patch"
 shared_folder_patch="$native_dir/patches/qemu-9p-guest-owner.patch"
@@ -98,6 +99,7 @@ pinch_patch_sha256=37acb8895dddd35fc66812d0c49ec5fc697f9127e9e12ed2e60d17999bf32
 precise_scroll_patch_sha256=54252b3b19358aa7e2c75d5f50775a7f488ef2d8b4db8723ba4768b56316a78f
 iso_swap_patch_sha256=57f33a5fb08fb90a7813b13bb7037a13198e4d7db230085b1faa28b284cf2387
 injected_text_patch_sha256=18d64d52f715d0cf1b2b6d1761059371e1859ee61faf3cc4800e2effc1ed4dd1
+media_keys_patch_sha256=b3d8ad15a7f792cd076d817a4e36a1dd0ca67a973e3e692f154103331b8fc881
 audio_device_patch_sha256=03aca71c26163c337338cc3b2013c35430690fc0e8b66c5ce92a42f59a9b3334
 audio_recovery_patch_sha256=d1e93fd303777f424d7b11522fcf44bf726058901e85de3920c33e9083f301ea
 shared_folder_patch_sha256=41247692501655393ae3a40f56915472ab29b6e89c5173e33db1f62cca56632f
@@ -224,6 +226,8 @@ macos_major=$(sw_vers -productVersion | awk -F. '{ print $1 }')
   die "missing Cocoa precise-scroll patch: $precise_scroll_patch"
 [[ -f $iso_swap_patch && ! -L $iso_swap_patch ]] || \
   die "missing Cocoa ISO Section/Grave swap patch: $iso_swap_patch"
+[[ -f $media_keys_patch && ! -L $media_keys_patch ]] || \
+  die "missing Cocoa media-keys patch: $media_keys_patch"
 [[ -f $audio_device_patch && ! -L $audio_device_patch ]] || \
   die "missing SDL audio-device patch: $audio_device_patch"
 [[ -f $texture_patch && ! -L $texture_patch ]] || \
@@ -449,6 +453,8 @@ verify_file_sha "Try Omarchy Cocoa ISO Section/Grave swap patch" \
   "$iso_swap_patch" "$iso_swap_patch_sha256"
 verify_file_sha "Try Omarchy Cocoa injected-text patch" \
   "$injected_text_patch" "$injected_text_patch_sha256"
+verify_file_sha "Try Omarchy Cocoa media-keys patch" \
+  "$media_keys_patch" "$media_keys_patch_sha256"
 verify_file_sha "Try Omarchy SDL audio-device patch" \
   "$audio_device_patch" "$audio_device_patch_sha256"
 verify_file_sha "Try Omarchy 9p shared-folder patch" \
@@ -487,6 +493,7 @@ patch -d "$source_dir" -p1 -f -i "$precise_scroll_patch"
 patch -d "$source_dir" -p1 -f -i "$iso_swap_patch"
 patch -d "$source_dir" -p1 -f -i "$injected_text_patch"
 patch -d "$source_dir" -p1 -f -i "$usb_exact_bus_patch"
+patch -d "$source_dir" -p1 -f -i "$media_keys_patch"
 
 virgl_root="$dependency_root/virglrenderer/$virgl_version"
 angle_root="$dependency_root/angle/$angle_version"
