@@ -78,6 +78,7 @@ chmod 0755 \
   "$root/usr/bin/omarchy-theme-bg-switcher" \
   "$root/usr/local/bin/xdg-terminal-exec" \
   "$root/usr/local/bin/kitty" \
+  "$root/usr/local/bin/ghostty" \
   "$root/usr/local/bin/omarchy-arch-aarch64" \
   "$root/usr/local/bin/omarchy-pkg-unavailable-arm" \
   "$root/usr/local/bin/omarchy-pkg-refuse-aarch64-unavailable" \
