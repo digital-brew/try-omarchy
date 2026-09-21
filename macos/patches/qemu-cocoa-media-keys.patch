@@ -1,0 +1,125 @@
+From: Try Omarchy contributors
+Subject: [PATCH] cocoa: deliver media keys to the focused guest
+
+Applies after the Try Omarchy Cocoa identity, dynamic-display,
+immersive-mode, full-grab, pause-ownership and pinch-zoom patches.
+
+The Mac's volume, mute and play/pause/next/previous keys are not key
+events: macOS delivers them as NX_SYSDEFINED aux-control events and acts on
+them itself, so pressing them over the guest window changed the host's
+volume and playback. Full grab already owns a HID-level event tap for
+Command chords; ask it for system-defined events too and, while the focused
+guest has captured the keyboard, translate the six media buttons into the
+matching Linux keys through the keyboard state tracker and swallow the host
+event. Brightness and other system-defined events, and every press while
+the guest is not focused, still reach macOS.
+
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -353,6 +353,7 @@
+ - (void) handleMonitorInput:(NSEvent *)event;
+ - (bool) handleEvent:(NSEvent *)event;
+ - (bool) handleEventLocked:(NSEvent *)event;
++- (bool) handleMediaKeyLocked:(NSEvent *)event;
+ - (void) notifyMouseModeChange;
+ - (BOOL) isMouseGrabbed;
+ - (BOOL) isKeyboardCaptured;
+@@ -837,7 +838,13 @@
+ {
+     COCOA_DEBUG("QemuCocoaView: setFullGrab\n");
+ 
+-    CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp) | CGEventMaskBit(kCGEventFlagsChanged);
++    /*
++     * Media keys (volume, mute, playback) are NX_SYSDEFINED events rather than
++     * key events. Without them in the mask macOS keeps acting on them itself
++     * while the guest window is focused.
++     */
++    CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp) |
++                       CGEventMaskBit(kCGEventFlagsChanged) | CGEventMaskBit(NX_SYSDEFINED);
+     eventsTap = CGEventTapCreate(kCGHIDEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault,
+                                  mask, handleTapEvent, self);
+     if (!eventsTap) {
+@@ -865,6 +872,73 @@
+ 
+ - (void) toggleKey: (unsigned int)keycode {
+     qkbd_state_key_event(kbd, keycode, !qkbd_state_key_get(kbd, keycode));
++}
++
++/*
++ * Volume, mute and playback keys reach the app as system-defined aux-control
++ * events, not key events, and macOS otherwise acts on them itself. While the
++ * focused guest owns the keyboard, deliver them as the matching Linux media
++ * keys and keep them from the host. Every other system-defined event
++ * (brightness, keyboard backlight, ...) and every press while unfocused stays
++ * with macOS.
++ *
++ * data1 layout (IOKit hidsystem): bits 16-31 carry the NX_KEYTYPE_* button,
++ * bits 8-15 the key state (0x0A pressed, 0x0B released), bit 0 the repeat flag.
++ */
++- (bool) handleMediaKeyLocked:(NSEvent *)event
++{
++    enum {
++        MEDIA_KEY_SOUND_UP = 0,   /* NX_KEYTYPE_SOUND_UP */
++        MEDIA_KEY_SOUND_DOWN = 1, /* NX_KEYTYPE_SOUND_DOWN */
++        MEDIA_KEY_MUTE = 7,       /* NX_KEYTYPE_MUTE */
++        MEDIA_KEY_PLAY = 16,      /* NX_KEYTYPE_PLAY */
++        MEDIA_KEY_NEXT = 17,      /* NX_KEYTYPE_NEXT */
++        MEDIA_KEY_PREVIOUS = 18,  /* NX_KEYTYPE_PREVIOUS */
++        MEDIA_KEY_FAST = 19,      /* NX_KEYTYPE_FAST */
++        MEDIA_KEY_REWIND = 20,    /* NX_KEYTYPE_REWIND */
++    };
++    NSInteger data;
++    unsigned int button, state, keycode;
++
++    if ([event subtype] != NX_SUBTYPE_AUX_CONTROL_BUTTONS ||
++        ![self isKeyboardCaptured] || !qemu_console_is_graphic(dcl.con)) {
++        return false;
++    }
++
++    data = [event data1];
++    button = ((unsigned long)data >> 16) & 0xFFFF;
++    state = ((unsigned long)data >> 8) & 0xFF;
++    if (state != 0x0A && state != 0x0B) {
++        return false;
++    }
++
++    switch (button) {
++    case MEDIA_KEY_SOUND_UP:
++        keycode = KEY_VOLUMEUP;
++        break;
++    case MEDIA_KEY_SOUND_DOWN:
++        keycode = KEY_VOLUMEDOWN;
++        break;
++    case MEDIA_KEY_MUTE:
++        keycode = KEY_MUTE;
++        break;
++    case MEDIA_KEY_PLAY:
++        keycode = KEY_PLAYPAUSE;
++        break;
++    case MEDIA_KEY_NEXT:
++    case MEDIA_KEY_FAST:
++        keycode = KEY_NEXTSONG;
++        break;
++    case MEDIA_KEY_PREVIOUS:
++    case MEDIA_KEY_REWIND:
++        keycode = KEY_PREVIOUSSONG;
++        break;
++    default:
++        return false;
++    }
++
++    qkbd_state_key_event(kbd, keycode, state == 0x0A);
++    return true;
+ }
+ 
+ // Does the work of sending input to the monitor
+@@ -1175,6 +1249,8 @@
+                 qkbd_state_key_event(kbd, keycode, false);
+             }
+             return true;
++        case NSEventTypeSystemDefined:
++            return [self handleMediaKeyLocked:event];
+         case NSEventTypeMagnify:
+             return [self handlePinchLocked:event];
+         case NSEventTypeScrollWheel:
