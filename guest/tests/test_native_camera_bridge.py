@@ -42,17 +42,77 @@ class NativeCameraBridgeTests(unittest.TestCase):
         self.assertEqual(parser.buffer, b"")
 
     def test_invalid_frame_size_is_rejected_before_buffering_payload(self) -> None:
+        for payload_bytes in (0, bridge.MAX_FRAME_BYTES + 1):
+            parser = bridge.MessageParser()
+            header = bridge.HEADER.pack(
+                bridge.MAGIC, bridge.VERSION, bridge.KIND_FRAME, 0, payload_bytes, 1
+            )
+            with self.assertRaisesRegex(ValueError, "invalid size"):
+                parser.feed(header)
+
+    def test_frames_of_another_geometry_parse_and_are_left_to_the_caller(self) -> None:
+        # The host may still stream the old size while the guest switches.
         parser = bridge.MessageParser()
-        header = bridge.HEADER.pack(
-            bridge.MAGIC,
-            bridge.VERSION,
-            bridge.KIND_FRAME,
-            0,
-            bridge.FRAME_BYTES - 1,
-            1,
+        frame = bytes([9]) * (640 * 480 * 3 // 2)
+        messages = parser.feed(self.message(bridge.KIND_FRAME, frame, sequence=5))
+        self.assertEqual(messages, [(bridge.KIND_FRAME, 5, frame)])
+        self.assertNotEqual(len(frame), bridge.FRAME_BYTES)
+
+    def test_control_messages_carry_the_loopback_geometry(self) -> None:
+        self.assertEqual(bridge.control_message("status"), b'{"type":"status"}\n')
+        self.assertEqual(bridge.control_message("stop"), b'{"type":"stop"}\n')
+        self.assertEqual(
+            bridge.control_message("start", height=bridge.HEIGHT, width=bridge.WIDTH),
+            b'{"height":720,"type":"start","width":1280}\n',
         )
-        with self.assertRaisesRegex(ValueError, "invalid size"):
-            parser.feed(header)
+
+    def test_host_geometry_resizes_frames_and_is_applied_when_idle(self) -> None:
+        original = (bridge.WIDTH, bridge.HEIGHT, bridge.FRAME_BYTES)
+        try:
+            geometry = bridge.handle_status(
+                b'{"fps":30,"height":480,"pixelFormat":"NV12","status":"idle","width":640}'
+            )
+            self.assertEqual(geometry, (640, 480))
+            # The same geometry as ours needs no reconfiguration.
+            self.assertIsNone(
+                bridge.handle_status(b'{"height":720,"status":"idle","width":1280}')
+            )
+            self.assertIsNone(bridge.handle_status(b'{"status":"idle"}'))
+            # Adopting a geometry reopens the device: v4l2loopback pins the
+            # format after the first write, so S_FMT alone would be ignored.
+            poller = mock.Mock()
+            with mock.patch.object(bridge, "os") as fake_os, mock.patch.object(
+                bridge, "open_camera", return_value=9
+            ) as open_camera, mock.patch.object(bridge, "configure_camera") as configure:
+                self.assertEqual(bridge.adopt_format(7, geometry, poller), 9)
+            poller.unregister.assert_called_once_with(7)
+            fake_os.close.assert_called_once_with(7)
+            open_camera.assert_called_once_with()
+            configure.assert_called_once_with(9)
+            poller.register.assert_called_once_with(9, bridge.select.POLLPRI)
+            with mock.patch.object(bridge, "os"), mock.patch.object(
+                bridge, "open_camera", return_value=11
+            ), mock.patch.object(
+                bridge, "configure_camera", side_effect=RuntimeError("rejected")
+            ):
+                with self.assertRaisesRegex(RuntimeError, "rejected"):
+                    bridge.adopt_format(9, geometry, mock.Mock())
+            self.assertEqual((bridge.WIDTH, bridge.HEIGHT), (640, 480))
+            self.assertEqual(bridge.FRAME_BYTES, 640 * 480 * 3 // 2)
+            self.assertEqual(len(bridge.black_frame()), bridge.FRAME_BYTES)
+            parser = bridge.MessageParser()
+            frame = bytes([37]) * bridge.FRAME_BYTES
+            messages = parser.feed(self.message(bridge.KIND_FRAME, frame, sequence=3))
+            self.assertEqual(messages, [(bridge.KIND_FRAME, 3, frame)])
+            for bad in ((641, 480), (640, 481), (8, 8), (7680, 4320), (True, 480), ("640", 480)):
+                with self.assertRaisesRegex(ValueError, "unusable camera geometry"):
+                    bridge.apply_format(*bad)
+            with self.assertRaisesRegex(ValueError, "pixel format"):
+                bridge.handle_status(
+                    b'{"height":480,"pixelFormat":"YUYV","status":"idle","width":640}'
+                )
+        finally:
+            bridge.WIDTH, bridge.HEIGHT, bridge.FRAME_BYTES = original
 
     def test_black_frame_is_video_range_nv12(self) -> None:
         frame = bridge.black_frame()
