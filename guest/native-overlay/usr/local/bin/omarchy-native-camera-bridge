@@ -23,9 +23,16 @@ VERSION = 1
 HEADER = struct.Struct("<4sBBHII")
 KIND_STATUS = 1
 KIND_FRAME = 2
+# Frame geometry, NV12. The host announces its configured geometry in the
+# first status message; apply_format() re-sizes these module globals and
+# main() reconfigures the loopback camera to match.
 WIDTH = 1280
 HEIGHT = 720
 FRAME_BYTES = WIDTH * HEIGHT * 3 // 2
+MIN_DIMENSION = 16
+MAX_WIDTH = 3840
+MAX_HEIGHT = 2160
+MAX_FRAME_BYTES = MAX_WIDTH * MAX_HEIGHT * 3 // 2
 MAX_STATUS_BYTES = 4096
 
 V4L2_BUF_TYPE_VIDEO_OUTPUT = 2
@@ -134,7 +141,27 @@ VIDIOC_SUBSCRIBE_EVENT = ioctl_number(
 )  # _IOW('V', 90, struct v4l2_event_subscription)
 
 
-def configure_camera(descriptor: int) -> None:
+def apply_format(width: int, height: int) -> None:
+    """Adopt the host's frame geometry for every later frame and V4L2 format."""
+    global WIDTH, HEIGHT, FRAME_BYTES
+    if (
+        not isinstance(width, int)
+        or not isinstance(height, int)
+        or isinstance(width, bool)
+        or isinstance(height, bool)
+        or not MIN_DIMENSION <= width <= MAX_WIDTH
+        or not MIN_DIMENSION <= height <= MAX_HEIGHT
+        or width % 2
+        or height % 2
+    ):
+        raise ValueError(f"host announced an unusable camera geometry {width}x{height}")
+    WIDTH = width
+    HEIGHT = height
+    FRAME_BYTES = WIDTH * HEIGHT * 3 // 2
+
+
+def set_format(descriptor: int) -> None:
+    """Program the loopback camera's output format and prime it with a black frame."""
     format_value = V4L2Format()
     format_value.type = V4L2_BUF_TYPE_VIDEO_OUTPUT
     format_value.value.pix = V4L2PixFormat(
@@ -162,7 +189,7 @@ def configure_camera(descriptor: int) -> None:
         or negotiated.pixelformat != fourcc("NV12")
         or negotiated.sizeimage < FRAME_BYTES
     ):
-        raise RuntimeError("v4l2loopback rejected the 1280x720 NV12 camera format")
+        raise RuntimeError(f"v4l2loopback rejected the {WIDTH}x{HEIGHT} NV12 camera format")
 
     # The first write makes an exclusive-caps loopback advertise CAPTURE, so
     # browsers can discover it before the real Mac camera has been requested.
@@ -171,6 +198,9 @@ def configure_camera(descriptor: int) -> None:
     except OSError as error:
         raise OSError(error.errno, "cannot prime the loopback camera") from error
 
+
+def configure_camera(descriptor: int) -> None:
+    set_format(descriptor)
     subscription = V4L2EventSubscription()
     subscription.type = V4L2_EVENT_PRI_CLIENT_USAGE
     subscription.flags = V4L2_EVENT_SUB_FL_SEND_INITIAL
@@ -192,10 +222,14 @@ def write_frame(descriptor: int, frame: bytes | bytearray | memoryview) -> None:
         raise RuntimeError(f"V4L2 accepted only {written} of {FRAME_BYTES} camera bytes")
 
 
-def send_control(descriptor: int, message_type: str) -> None:
-    payload = json.dumps(
-        {"type": message_type}, separators=(",", ":"), sort_keys=True
+def control_message(message_type: str, **fields: int) -> bytes:
+    return json.dumps(
+        {"type": message_type, **fields}, separators=(",", ":"), sort_keys=True
     ).encode("ascii") + b"\n"
+
+
+def send_control(descriptor: int, message_type: str, **fields: int) -> None:
+    payload = control_message(message_type, **fields)
     offset = 0
     while offset < len(payload):
         try:
@@ -218,7 +252,10 @@ class MessageParser:
             if magic != MAGIC or version != VERSION or reserved != 0:
                 raise ValueError("host sent an invalid camera message header")
             if kind == KIND_FRAME:
-                if payload_bytes != FRAME_BYTES:
+                # Frames of another geometry are dropped by the caller rather
+                # than treated as protocol errors: the host may still be
+                # switching formats when the guest changes its loopback size.
+                if not 0 < payload_bytes <= MAX_FRAME_BYTES:
                     raise ValueError("host camera frame has an invalid size")
             elif kind == KIND_STATUS:
                 if payload_bytes > MAX_STATUS_BYTES:
@@ -231,7 +268,7 @@ class MessageParser:
             payload = bytes(self.buffer[HEADER.size:message_bytes])
             del self.buffer[:message_bytes]
             messages.append((kind, sequence, payload))
-        if len(self.buffer) > HEADER.size + FRAME_BYTES:
+        if len(self.buffer) > HEADER.size + MAX_FRAME_BYTES:
             raise ValueError("host camera message buffer exceeds its protocol limit")
         return messages
 
@@ -244,15 +281,51 @@ def dequeue_client_count(descriptor: int) -> int:
     return int.from_bytes(bytes(event.data.raw_data[:4]), sys.byteorder)
 
 
-def handle_status(payload: bytes) -> None:
+def handle_status(payload: bytes) -> tuple[int, int] | None:
+    """Log the host status; return the announced geometry when it differs from ours."""
     value: Any = json.loads(payload)
     if not isinstance(value, dict) or not isinstance(value.get("status"), str):
         raise ValueError("host sent an invalid camera status")
     status = value["status"]
     if status == "streaming":
-        log(f"streaming {value.get('name', 'Mac Camera')} at {WIDTH}x{HEIGHT}")
+        log(
+            f"streaming {value.get('name', 'Mac Camera')} at "
+            f"{value.get('width', WIDTH)}x{value.get('height', HEIGHT)}"
+            f"@{value.get('fps', '?')}"
+        )
     elif status == "unavailable":
         log(f"Mac camera is unavailable ({value.get('reason', 'capture error')})")
+    width = value.get("width")
+    height = value.get("height")
+    if width is None and height is None:
+        return None
+    if value.get("pixelFormat", "NV12") != "NV12":
+        raise ValueError("host announced an unsupported camera pixel format")
+    if (width, height) == (WIDTH, HEIGHT):
+        return None
+    return (width, height)
+
+
+def adopt_format(camera: int, geometry: tuple[int, int], poller: select.poll) -> int:
+    """Switch the loopback camera to the host's geometry while no app is reading it.
+
+    v4l2loopback fixes the output format the moment the first frame is
+    written and ignores later S_FMT calls, so the device is closed and
+    reopened first: with no readers attached that resets the format (the
+    module is loaded without keep_format). Returns the new descriptor.
+    """
+    apply_format(*geometry)
+    poller.unregister(camera)
+    os.close(camera)
+    camera = open_camera()
+    try:
+        configure_camera(camera)
+    except Exception:
+        os.close(camera)
+        raise
+    poller.register(camera, select.POLLPRI)
+    log(f"loopback camera reconfigured to {WIDTH}x{HEIGHT} NV12")
+    return camera
 
 
 def open_port() -> int:
@@ -281,6 +354,14 @@ def main() -> int:
         poller.register(camera, select.POLLPRI)
         poller.register(port, select.POLLIN | select.POLLHUP | select.POLLERR)
         clients_active = False
+        # A geometry announced while an app holds the camera open waits here
+        # until the last reader leaves; v4l2loopback refuses S_FMT on a busy
+        # device and the app would not renegotiate its own format anyway.
+        pending_geometry: tuple[int, int] | None = None
+        dropped_frame_bytes: set[int] = set()
+        # virtio-serial drops host writes made before this port was open, so
+        # the host's initial status may never have arrived. Ask for it.
+        send_control(port, "status")
 
         while True:
             for descriptor, events in poller.poll(1000):
@@ -288,9 +369,18 @@ def main() -> int:
                     active = dequeue_client_count(camera) > 0
                     if active != clients_active:
                         clients_active = active
-                        send_control(port, "start" if active else "stop")
+                        if active:
+                            # Name the geometry the loopback device is programmed
+                            # with; the host captures at exactly that size.
+                            send_control(port, "start", height=HEIGHT, width=WIDTH)
+                        else:
+                            send_control(port, "stop")
                         if not active:
-                            write_frame(camera, black_frame())
+                            if pending_geometry is not None:
+                                camera = adopt_format(camera, pending_geometry, poller)
+                                pending_geometry = None
+                            else:
+                                write_frame(camera, black_frame())
                 if descriptor == port:
                     if events & (select.POLLHUP | select.POLLERR):
                         return 0
@@ -303,9 +393,26 @@ def main() -> int:
                             return 0
                         for kind, _, payload in parser.feed(chunk):
                             if kind == KIND_STATUS:
-                                handle_status(payload)
+                                geometry = handle_status(payload)
+                                if geometry is not None:
+                                    if clients_active:
+                                        pending_geometry = geometry
+                                        log(
+                                            "host camera geometry changed to "
+                                            f"{geometry[0]}x{geometry[1]}; applying when idle"
+                                        )
+                                    else:
+                                        camera = adopt_format(camera, geometry, poller)
+                                        pending_geometry = None
                             elif clients_active:
-                                write_frame(camera, payload)
+                                if len(payload) == FRAME_BYTES:
+                                    write_frame(camera, payload)
+                                elif len(payload) not in dropped_frame_bytes:
+                                    dropped_frame_bytes.add(len(payload))
+                                    log(
+                                        f"dropping host frames of {len(payload)} bytes; "
+                                        f"loopback camera expects {FRAME_BYTES}"
+                                    )
     finally:
         try:
             send_control(port, "stop")
