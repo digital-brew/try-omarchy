@@ -5,7 +5,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: refresh-package-lock.sh [--source OMARCHY_SOURCE] [--spec FILE] --output FILE"
+  echo "Usage: refresh-package-lock.sh [--source OMARCHY_SOURCE] [--spec FILE] [--work DIR] --output FILE"
 }
 
 fail() {
@@ -18,6 +18,7 @@ guest_dir=$(cd "$script_dir/.." && pwd)
 source_dir=""
 spec="$guest_dir/spec.json"
 output=""
+work_dir=""
 
 while (($#)); do
   case "$1" in
@@ -31,6 +32,11 @@ while (($#)); do
       ;;
     --spec)
       spec=${2:-}
+      shift 2
+      ;;
+    --work)
+      # Persistent cache directory (downloads); defaults to a temporary directory.
+      work_dir=${2:-}
       shift 2
       ;;
     -h|--help)
