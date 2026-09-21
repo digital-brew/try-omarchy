@@ -639,6 +639,7 @@ exact_keys(
     {
         "base-devel",
         "binutils",
+        "ccache",
         "cmake",
         "gcc",
         "gcc-libs",
@@ -657,7 +658,7 @@ exact_keys(
 hyprland_identity = hashlib.sha256(
     json.dumps(hyprland, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
 ).hexdigest()
-if hyprland_identity != "b89f798d6d872313918628dd4c26b37a8fe8d12d8950bd7b25150e29f96800b3":
+if hyprland_identity != "ec3f8d1efc7870b0912ffe1ac55a4c4ba220551ea60b3366398d716930d935cd":
     fail("factory Hyprland component is not the reviewed rounded-border build")
 mise = exact_keys(
     supply_chain.get("mise"),
