@@ -1836,6 +1836,17 @@ def main() -> None:
         and '"$root/usr/local/bin/kitty"' in configure,
         "Kitty VirGL wrapper forces software GL onto the pacman binary",
     )
+    ghostty_wrapper = GUEST / "native-overlay/usr/local/bin/ghostty"
+    ghostty_wrapper_text = read(ghostty_wrapper)
+    check(ghostty_wrapper.stat().st_mode & stat.S_IXUSR != 0, "Ghostty VirGL wrapper is executable")
+    check(
+        "real=/usr/bin/ghostty" in ghostty_wrapper_text
+        and "export LIBGL_ALWAYS_SOFTWARE=1" in ghostty_wrapper_text
+        and "omarchy.qemu_virgl=1" in ghostty_wrapper_text
+        and 'exec "$real" "$@"' in ghostty_wrapper_text
+        and '"$root/usr/local/bin/ghostty"' in configure,
+        "Ghostty VirGL wrapper forces software GL onto the pacman binary",
+    )
     check(
         "/usr/local/bin/omarchy-native-cursor-restore 2>/dev/null || true"
         in read(screensaver_override),
@@ -2052,6 +2063,7 @@ HOTPLUG=1
         background_switcher_override,
         cursor_restore,
         kitty_wrapper,
+        ghostty_wrapper,
         display_sync,
         mac_share,
         *GUEST.glob("*.sh"),

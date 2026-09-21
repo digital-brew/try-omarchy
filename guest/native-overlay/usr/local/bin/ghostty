@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Ghostty needs a newer OpenGL than Try Omarchy's VirGL guest exposes and
+# fails with "Unable to acquire an OpenGL context for rendering". Force Mesa
+# software rendering, which provides it, so the terminal can open normally.
+# Prefer the pacman binary so this PATH shim never recurses on itself.
+
+real=/usr/bin/ghostty
+if [[ ! -x $real ]]; then
+  echo "ghostty is not installed" >&2
+  exit 127
+fi
+
+cmdline_file=${OMARCHY_GHOSTTY_CMDLINE:-/proc/cmdline}
+if [[ -r $cmdline_file ]]; then
+  read -r -a kernel_options <"$cmdline_file" || true
+  for kernel_option in "${kernel_options[@]}"; do
+    if [[ $kernel_option == omarchy.qemu_virgl=1 ]]; then
+      export LIBGL_ALWAYS_SOFTWARE=1
+      break
+    fi
+  done
+fi
+
+exec "$real" "$@"
