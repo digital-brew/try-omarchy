@@ -703,6 +703,7 @@ def main() -> None:
             "buildPackages": {
                 "base-devel": "1-2",
                 "binutils": "2.46+r70+g155188ea10a7-1",
+                "ccache": "4.14-1",
                 "cmake": "4.4.3-2",
                 "gcc": "16.1.1+r12+g301eb08fa2c5-1",
                 "gcc-libs": "16.1.1+r12+g301eb08fa2c5-1",
@@ -1287,7 +1288,7 @@ def main() -> None:
         and "pacman -Qkk" in register_hyprland
         and "Glaze license digest mismatch" in register_hyprland
         and "LICENSE.glaze" in register_hyprland
-        and "build_package_records[@]} == 13" in register_hyprland
+        and "build_package_records[@]} == 14" in register_hyprland
         and "builder_pacman_config" in register_hyprland
         and "could not derive the Hyprland builder pacman configuration" in register_hyprland
         and 'pacman -Syy --noconfirm --config "$builder_pacman_config"' in register_hyprland

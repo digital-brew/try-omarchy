@@ -92,7 +92,7 @@ install -d -m 0755 "$output_repo"
 # Install build dependencies before either ABI pin. Hyprtoolkit then builds
 # against our verified aquamarine, never the incompatible mirror package.
 pacman -S --needed --noconfirm \
-  base-devel cmake hyprutils hyprwayland-scanner libdisplay-info libdrm libglvnd \
+  base-devel ccache cmake hyprutils hyprwayland-scanner libdisplay-info libdrm libglvnd \
   libinput mesa pixman seatd systemd-libs wayland wayland-protocols \
   cairo glib2 hyprgraphics hyprlang iniparser libxkbcommon pango >/dev/null
 
@@ -255,8 +255,16 @@ install -m 0644 -o abi-build -g abi-build "$source_cache" \
 runuser -u abi-build -- test -w "$build_dir" || fail "build user cannot access $build_dir"
 makepkg_config="$stage/makepkg.conf"
 cp /etc/makepkg.conf "$makepkg_config"
-printf '\nCFLAGS+=" -ffile-prefix-map=%s=/usr/src/try-omarchy-%s"\nCXXFLAGS+=" -ffile-prefix-map=%s=/usr/src/try-omarchy-%s"\nOPTIONS+=(!debug)\nPKGEXT=\".pkg.tar.zst\"\n' \
+printf '\nCFLAGS+=" -ffile-prefix-map=%s=/usr/src/try-omarchy-%s"\nCXXFLAGS+=" -ffile-prefix-map=%s=/usr/src/try-omarchy-%s"\nOPTIONS+=(!debug)\nBUILDENV+=(ccache)\nPKGEXT=\".pkg.tar.zst\"\n' \
   "$stage" "$name" "$stage" "$name" >> "$makepkg_config"
+
+# makepkg puts ccache's compiler shims first on PATH when BUILDENV has ccache.
+# The cache lives in the persistent work volume, owned by the build user; the
+# prefix maps above keep cached objects identical to a cold compile, so the
+# package provenance check below is unaffected.
+ccache_dir="$work/ccache/abi-pins"
+install -d -m 0700 -o abi-build -g abi-build "$work/ccache" "$ccache_dir"
+[[ -O "$work/ccache" ]] && chown abi-build:abi-build "$work/ccache" || true
 
 export SOURCE_DATE_EPOCH="$source_date_epoch"
 export PACKAGER='Try Omarchy factory <factory@try-omarchy>'
@@ -264,7 +272,10 @@ export PACKAGER='Try Omarchy factory <factory@try-omarchy>'
   cd "$build_dir"
   runuser -u abi-build -- env HOME="$build_home" SOURCE_DATE_EPOCH="$source_date_epoch" \
     PACKAGER="$PACKAGER" CMAKE_BUILD_PARALLEL_LEVEL=4 \
+    CCACHE_DIR="$ccache_dir" CCACHE_BASEDIR="$stage" CCACHE_NOHASHDIR=1 \
     makepkg --config "$makepkg_config" --noconfirm --skippgpcheck
+  runuser -u abi-build -- env CCACHE_DIR="$ccache_dir" ccache --show-stats 2>/dev/null \
+    | grep -E 'Hits|Misses|Cache size' | sed "s/^/[$name ccache] /" || true
 )
 
 package_archive="$build_dir/$name-$version-$pkgrel-aarch64.pkg.tar.zst"

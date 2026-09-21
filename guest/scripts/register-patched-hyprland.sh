@@ -360,6 +360,7 @@ packages = json.loads(sys.argv[1])
 expected = {
     "base-devel",
     "binutils",
+    "ccache",
     "cmake",
     "gcc",
     "gcc-libs",
@@ -378,7 +379,7 @@ for name in sorted(packages):
     print(f"{name}|{packages[name]}")
 PY
 )
-(( ${#build_package_records[@]} == 13 )) || fail "unexpected Hyprland buildPackages set"
+(( ${#build_package_records[@]} == 14 )) || fail "unexpected Hyprland buildPackages set"
 build_package_specs=()
 for record in "${build_package_records[@]}"; do
   IFS='|' read -r package package_version extra <<<"$record"
@@ -420,7 +421,7 @@ chmod 0600 "$builder_pacman_config"
 # current repository path instead of producing mirror-wide 404 responses.
 pacman -Syy --noconfirm --config "$builder_pacman_config"
 pacman --noconfirm --config "$builder_pacman_config" -S --needed "${build_package_specs[@]}"
-for command in cmake cmp readelf strip; do
+for command in ccache cmake cmp readelf strip; do
   command -v "$command" >/dev/null || fail "$command is missing after installing Hyprland build packages"
 done
 for record in "${build_package_records[@]}"; do
@@ -441,12 +442,23 @@ export CFLAGS="-ffile-prefix-map=$stage=/usr/src/try-omarchy-hyprland -fdebug-pr
 export CXXFLAGS="$CFLAGS"
 jobs=$(nproc 2>/dev/null || getconf NPROCESSORS_CONF)
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || fail "could not determine Hyprland build parallelism"
+# Compiled objects are cached in the persistent work volume across builds. The
+# staging directory is fresh each time, so hash paths relative to it and leave
+# the working directory out of the hash; the prefix maps above already make
+# the emitted paths independent of it, so cached objects are byte-identical to
+# a cold compile and the binary provenance check below still applies.
+ccache_dir="$work/ccache/hyprland"
+mkdir -p "$ccache_dir"
+export CCACHE_DIR="$ccache_dir" CCACHE_BASEDIR="$stage" CCACHE_NOHASHDIR=1
+ccache --zero-stats >/dev/null 2>&1 || true
 (
   cd "$source_root"
   cmake --no-warn-unused-cli \
     -DCMAKE_BUILD_TYPE:STRING=Release \
     -DCMAKE_INSTALL_PREFIX:STRING=/usr \
     -DCMAKE_SKIP_RPATH=ON \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DFETCHCONTENT_SOURCE_DIR_GLAZE:PATH="$glaze_root" \
     -S . \
     -B build
@@ -454,6 +466,7 @@ jobs=$(nproc 2>/dev/null || getconf NPROCESSORS_CONF)
     fail "Hyprland configure did not use the verified Glaze extraction"
   cmake --build build --config Release --target all -j"$jobs"
 )
+ccache --show-stats 2>/dev/null | grep -E 'Hits|Misses|Cache size' | sed 's/^/[hyprland ccache] /' || true
 
 built_binary="$source_root/build/Hyprland"
 [[ -x $built_binary ]] || fail "Hyprland build did not produce an executable"
