@@ -37,6 +37,8 @@ for name in omarchy-dns omarchy-theme-browser; do
 done
 systemctl enable NetworkManager.service
 systemctl enable systemd-resolved.service
+# Advertise LAN services such as KDE Connect and LocalSend over mDNS.
+systemctl enable avahi-daemon.service
 systemctl enable systemd-timesyncd.service
 systemctl enable try-omarchy-clock-recovery.timer
 
@@ -75,10 +77,13 @@ grep -Fxq "voxtype-bin $expected_voxtype aarch64" <<<"$voxtype_resolution" || {
   exit 1
 }
 for dependency in gtk4-layer-shell which; do
-  grep -Eq "^${dependency} [^ ]+ aarch64$" <<<"$voxtype_resolution" || {
+  # gtk4-layer-shell can already be installed as part of the factory image, so
+  # it is absent from Voxtype's pending transaction and must count as resolved.
+  if ! grep -Eq "^${dependency} [^ ]+ aarch64$" <<<"$voxtype_resolution" \
+    && ! pacman -Qq "$dependency" >/dev/null 2>&1; then
     echo "Voxtype runtime dependency does not resolve for ARM64: $dependency" >&2
     exit 1
-  }
+  fi
 done
 [[ $(pacman -Qoq /usr/local/bin/omarchy-native-cursor-restore) == try-omarchy-runtime ]] || {
   echo "Screensaver cursor helper is not owned by the Omarchy runtime package" >&2

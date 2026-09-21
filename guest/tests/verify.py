@@ -1280,6 +1280,12 @@ def main() -> None:
     check("systemctl enable omarchy-native-mac-share.service" in finalizer, "shared Mac folder mounts at boot")
     check("systemctl enable systemd-timesyncd.service" in finalizer, "guest time synchronization starts at boot")
     check(
+        "systemctl enable avahi-daemon.service" in finalizer
+        and "\navahi\n" in package_text.decode()
+        and "\nnss-mdns\n" in package_text.decode(),
+        "factory image ships and starts mDNS discovery for LAN services",
+    )
+    check(
         'expected_ttfx=$(read_spec' in finalizer
         and "/usr/bin/ttfx --version" in finalizer
         and "pacman -Qoq /usr/local/bin/omarchy-native-cursor-restore" in finalizer

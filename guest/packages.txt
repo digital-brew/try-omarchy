@@ -1,5 +1,6 @@
 # ARM64 transaction for the real Quattro first-boot owner-provisioning flow.
 archlinuxarm-keyring
+avahi
 base
 bash-completion
 bat
@@ -48,6 +49,7 @@ networkmanager
 noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
+nss-mdns
 omarchy-keyring
 openssh
 pacman-contrib
