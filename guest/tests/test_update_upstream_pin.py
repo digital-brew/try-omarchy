@@ -83,6 +83,9 @@ class UpdateUpstreamPinTests(unittest.TestCase):
             check=check,
             text=True,
             capture_output=True,
+            # A developer's global git config (URL rewrites such as
+            # insteadOf) must not leak into the fixture repository checks.
+            env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"},
         )
 
     def test_updates_every_source_identity_field_atomically(self) -> None:
