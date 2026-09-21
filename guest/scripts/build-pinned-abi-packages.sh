@@ -238,7 +238,8 @@ with tarfile.open(archive, "r:gz") as source:
 PY
 
 if ! id -u abi-build >/dev/null 2>&1; then
-  useradd --system --create-home --home-dir "$stage/home" --shell /usr/bin/nologin \
+  # pam_shells rejects nologin, which breaks runuser/makepkg on fresh builder images.
+  useradd --system --create-home --home-dir "$stage/home" --shell /bin/sh \
     abi-build
   added_build_user=1
 else
