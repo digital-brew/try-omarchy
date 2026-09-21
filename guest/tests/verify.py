@@ -132,6 +132,10 @@ def main() -> None:
     )
     check(spec["runtime"]["storage"]["expandedSizeMiB"] == 24576, "working disk expands to 24 GiB")
     check(
+        "diskGiB: 150" in read(GUEST.parent / "macos/Sources/OmarchyVMHelper/VMResourcePreferences.swift"),
+        "new launcher settings default the disk maximum to 150 GiB",
+    )
+    check(
         set(spec["inputs"]) == {"packages", "packageLock", "pacmanConfig", "packageRepositoryMirrors"},
         "spec has a minimal input set",
     )

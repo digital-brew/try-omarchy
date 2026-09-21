@@ -218,8 +218,8 @@ _qps_volume_filesystem() {
 
 # The factory is decompressed (or cloned from a raw development source), then
 # expanded sparsely to the working capacity. Sparse files cannot be given up:
-# on exFAT a `truncate` allocates every byte immediately, so a 64 GiB disk would
-# cost 64 GiB the moment it is created. Refuse anything but APFS, naming what
+# on exFAT a `truncate` allocates every byte immediately, so a 150 GiB disk would
+# cost 150 GiB the moment it is created. Refuse anything but APFS, naming what
 # was actually found.
 _qps_assert_volume_supported() {
   local qps_root=$1

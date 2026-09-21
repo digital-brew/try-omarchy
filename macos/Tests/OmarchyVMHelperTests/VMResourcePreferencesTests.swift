@@ -8,10 +8,10 @@ struct VMResourcePreferencesTests {
         VMResourceLimits(hostCPUCount: cpus, hostMemoryBytes: memoryGiB << 30)
     }
 
-    @Test("New installs use host-aware memory defaults and up to eight cores")
+    @Test("New installs use every host core and the largest memory choice")
     func defaults() {
-        #expect(limits().resolve(nil) == VMResources(cpuCount: 8, memoryGiB: 8, diskGiB: 64))
-        #expect(limits(cpus: 6, memoryGiB: 8).defaults == VMResources(cpuCount: 6, memoryGiB: 4, diskGiB: 64))
+        #expect(limits().resolve(nil) == VMResources(cpuCount: 18, memoryGiB: 44, diskGiB: 150))
+        #expect(limits(cpus: 6, memoryGiB: 8).defaults == VMResources(cpuCount: 6, memoryGiB: 4, diskGiB: 150))
         #expect(limits(memoryGiB: 7).memoryChoicesGiB.contains(4))
     }
 
@@ -54,8 +54,8 @@ struct VMResourcePreferencesTests {
         #expect(small.resolve(VMResources(cpuCount: 18, memoryGiB: 12))
             == VMResources(cpuCount: 8, memoryGiB: 12))
         #expect(small.resolve(VMResources(cpuCount: 6, memoryGiB: 44))
-            == VMResources(cpuCount: 6, memoryGiB: 8))
-        #expect(small.resolve(VMResources(cpuCount: -1, memoryGiB: Int.max)) == VMResources(cpuCount: 8, memoryGiB: 8))
+            == VMResources(cpuCount: 6, memoryGiB: 12))
+        #expect(small.resolve(VMResources(cpuCount: -1, memoryGiB: Int.max)) == small.defaults)
     }
 
     @Test("Saved choices survive reopening and resolution does not rewrite them")
@@ -132,7 +132,7 @@ struct VMResourcePreferencesTests {
             #expect(limits(memoryGiB: hostGiB).memoryChoicesGiB.map { $0 * 1024 }
                 == MemoryPolicy.allowedChoicesMiB(hostMemoryMiB: Int(hostGiB) * 1024))
             #expect(limits(memoryGiB: hostGiB).defaults.memoryGiB * 1024
-                == MemoryPolicy.recommendedMemoryMiB(hostMemoryMiB: Int(hostGiB) * 1024))
+                == MemoryPolicy.allowedChoicesMiB(hostMemoryMiB: Int(hostGiB) * 1024).last)
         }
     }
 
