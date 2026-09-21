@@ -5,7 +5,7 @@
     "filesystem": "ext4",
     "filesystemLabel": "omarchy-factory",
     "filesystemUuid": "89054943-1f4e-4f14-b934-d6db3fba4254",
-    "sizeMiB": 6144,
+    "sizeMiB": 8192,
     "sourceDateEpoch": 1788886195
   },
   "guest": {
@@ -417,29 +417,29 @@
       },
       {
         "id": "pkg-add-aarch64-unavailable",
-        "description": "Refuse known aarch64-unavailable packages from omarchy-pkg-add with the shared message.",
+        "description": "Refuse known aarch64-unavailable Install-menu packages and route names that exist only in the sync-only aarch64 repositories to explicit repo targets.",
         "reference": "https://github.com/basecamp/omarchy/blob/346e69e1cec6c4e8924531874af6ba010a1bc99e/bin/omarchy-pkg-add",
         "patch": "patches/omarchy/omarchy-pkg-add-aarch64-unavailable.patch",
-        "patchSha256": "da90db1be0f3b32426ad55991d971d71cb5811f598957fe55c3d9284aa0803df",
+        "patchSha256": "457d0f228066c52e2c2c0a4bece8b6622e55376d73d2e0c4f4d947bae670a4b6",
         "targets": [
           {
             "path": "bin/omarchy-pkg-add",
             "beforeSha256": "76bf74a1e4e65d07a29c06ebc5a621bf36662efc0a175ffc53b723bd80339a3e",
-            "afterSha256": "f9cfab3be6f9dbdc5a60915ea9eea55d0a44e3828a7ec0d098a3f7a48398a3c3"
+            "afterSha256": "7bfa66103191ab9993e9a7da4ba24a53103d63edfbb9a2346ac5208690c34a5f"
           }
         ]
       },
       {
         "id": "pkg-aur-add-aarch64-unavailable",
-        "description": "Refuse known aarch64-unavailable packages from omarchy-pkg-aur-add with the shared message.",
+        "description": "Refuse known aarch64-unavailable AUR packages and route names that exist only in the sync-only aarch64 repositories to explicit repo targets.",
         "reference": "https://github.com/basecamp/omarchy/blob/346e69e1cec6c4e8924531874af6ba010a1bc99e/bin/omarchy-pkg-aur-add",
         "patch": "patches/omarchy/omarchy-pkg-aur-add-aarch64-unavailable.patch",
-        "patchSha256": "58578eb598d9fded75fe5ff7ea64afb1a887faf6c8bd12adfa9eda2f2c2ff675",
+        "patchSha256": "d3c87e8f14f34fec29cf572fef5a241a41123a6adda6539c51dfb184dcc51da2",
         "targets": [
           {
             "path": "bin/omarchy-pkg-aur-add",
             "beforeSha256": "ec2f57b0d153bb814cae344618f61603282cbedce0012647b2c391d9000cd5f6",
-            "afterSha256": "8d230a2628a27ae690ef3b630f8c1e8bba6ba8a74254e175717509cfc21a802b"
+            "afterSha256": "5000b67103ddf84ec1cb4ef07b4e43cad4fca7369c3f9e92e5550027d1c44e77"
           }
         ]
       },
@@ -510,6 +510,25 @@
             "path": "install/provisioning/setup-form.sh",
             "beforeSha256": "0fbb8c3c8b151e5ff884c16d381e12fda53cc16adfd08a684d41e7327250665d",
             "afterSha256": "5e2288809a3d9cc2cf91ca955be97b5fdcf6e786b7e8e3be6ea1a1b19abda15c"
+          }
+        ]
+      },
+      {
+        "id": "minecraft-prismlauncher-aarch64",
+        "description": "Offer Minecraft through Prism Launcher, which Arch Linux ARM packages, instead of the x86_64-only official launcher.",
+        "reference": "https://github.com/omacom/try-omarchy/pull/138",
+        "patch": "patches/omarchy/minecraft-prismlauncher-aarch64.patch",
+        "patchSha256": "00ad0e7675b9f0ca135bfd58dd36f4fe1596d6d9666be7c75dad994782d3e4eb",
+        "targets": [
+          {
+            "path": "default/omarchy/omarchy-menu.jsonc",
+            "beforeSha256": "78d817a76be7ce7d204e15c2617df72f897efe90e22f9af4e255bdf17fbfbedb",
+            "afterSha256": "861b5f47e4478549d2d65b3d51e191b13f28d8b6168faabe8e753486402a0f83"
+          },
+          {
+            "path": "bin/omarchy-remove-gaming-minecraft",
+            "beforeSha256": "973881528fd19399df63f8a8f256a77a6ad9870d6e2aa1f3e27c08270393a95e",
+            "afterSha256": "19b553185ec82f3d16844c2a8e56e1c5303cb8fe90cf6577fdc3e12d92d6ae21"
           }
         ]
       }

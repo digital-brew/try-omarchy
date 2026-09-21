@@ -4,7 +4,8 @@
 # from Arch Linux ARM (with no practical aarch64 install path today).
 # Wine/umu are NOT listed here: they are refused only from Battle.net / Lutris
 # installers so aarch64 pkg-add of those deps elsewhere is not blocked.
-ghostty	Ghostty
+# Ghostty (omarchy-mac aarch64 repo) and Minecraft (Prism Launcher) are served
+# through omarchy-pkg-resolve-aarch64-sources instead of being refused.
 microsoft-edge-stable-bin	Edge
 spotify	Spotify
 dropbox	Dropbox
@@ -14,5 +15,4 @@ cursor-bin	Cursor
 grok-bot	Grok Bot
 lmstudio-bin	LM Studio
 steam	Steam
-minecraft-launcher	Minecraft
 heroic-games-launcher-bin	Heroic

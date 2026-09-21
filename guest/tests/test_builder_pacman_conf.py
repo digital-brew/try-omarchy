@@ -80,7 +80,7 @@ class BuilderPacmanConfigTests(unittest.TestCase):
         self.assertNotIn("XferCommand", original)
         self.assertNotIn("DownloadUser", config)
         self.assertIn("DownloadUser = alpm", original)
-        self.assertIn("Server = https://pkgs.omarchy.org/$arch", config)
+        self.assertIn("Server = https://pkgs.omarchy.org/edge/$arch", config)
 
     def test_mirror_rejects_insecure_urls_and_configuration_injection(self):
         for mirror in (

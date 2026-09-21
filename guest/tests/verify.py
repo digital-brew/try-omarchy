@@ -263,6 +263,7 @@ def main() -> None:
             "battlenet-aarch64-unavailable",
             "lutris-aarch64-unavailable",
             "keyboard-us-acentos",
+            "minecraft-prismlauncher-aarch64",
         ],
         "Omarchy backports are explicitly ordered and identified",
     )
@@ -358,7 +359,7 @@ def main() -> None:
     unavailable_package_text = read(unavailable_packages)
     check(
         unavailable_packages.is_file()
-        and "ghostty\tGhostty" in unavailable_package_text
+        and "ghostty\tGhostty" not in unavailable_package_text
         and "microsoft-edge-stable-bin\tEdge" in unavailable_package_text
         and "spotify\tSpotify" in unavailable_package_text
         and "dropbox\tDropbox" in unavailable_package_text
@@ -366,13 +367,13 @@ def main() -> None:
         and "grok-bot\tGrok Bot" in unavailable_package_text
         and "lmstudio-bin\tLM Studio" in unavailable_package_text
         and "steam\tSteam" in unavailable_package_text
-        and "minecraft-launcher\tMinecraft" in unavailable_package_text
+        and "minecraft-launcher\tMinecraft" not in unavailable_package_text
         and "heroic-games-launcher-bin\tHeroic" in unavailable_package_text
         and "umu-launcher\tWine game launcher" not in unavailable_package_text
         and "wine-staging\tWine" not in unavailable_package_text
         and "wine-mono\tWine" not in unavailable_package_text
         and "wine-gecko\tWine" not in unavailable_package_text,
-        "aarch64 unavailable package denylist covers Install gaps without globally blocking Wine/umu",
+        "aarch64 unavailable package denylist covers Install gaps (Ghostty and Minecraft are routed instead) without globally blocking Wine/umu",
     )
 
     post_build_installers = authenticity["postBuildUserInstallers"]
@@ -421,8 +422,50 @@ def main() -> None:
     )
     check(
         "[omarchy]" in pacman_conf
-        and "Server = https://pkgs.omarchy.org/$arch" in pacman_conf,
-        "factory pacman retains the ARM Omarchy keyring repository",
+        and "Server = https://pkgs.omarchy.org/edge/$arch" in pacman_conf
+        and "Server = https://pkgs.omarchy.org/$arch" not in pacman_conf,
+        "factory pacman uses Omarchy's aarch64 edge channel (the stable index carries only the keyring)",
+    )
+    check(
+        re.search(r"\[omarchy\]\nUsage = Sync\nSigLevel = Required DatabaseOptional\n", pacman_conf) is not None
+        and re.search(r"\[omarchy-aarch64\]\nUsage = Sync\nSigLevel = Optional TrustAll\n", pacman_conf) is not None
+        and "https://github.com/omarchy-mac/omarchy-pkgs-aarch64/releases/download/edge" in pacman_conf,
+        "the Omarchy edge and omarchy-mac repositories are sync-only, so only explicit repo/package targets come from them",
+    )
+    resolver = read(GUEST / "native-overlay/usr/local/bin/omarchy-pkg-resolve-aarch64-sources")
+    sources_map = read(GUEST / "native-overlay/usr/local/share/try-omarchy/aarch64-package-sources")
+    check(
+        "omarchy-pkg-resolve-aarch64-sources" in read(GUEST / "patches/omarchy/omarchy-pkg-add-aarch64-unavailable.patch")
+        and "omarchy-pkg-resolve-aarch64-sources" in read(GUEST / "patches/omarchy/omarchy-pkg-aur-add-aarch64-unavailable.patch")
+        and 'installable "$pkg"' in resolver
+        and "pacman -Sp -dd --print-format '%n'" in resolver
+        and 'in_repo_lookup "omarchy/$pkg"' in resolver
+        and 'in_repo_lookup "omarchy-aarch64/$pkg"' in resolver
+        and "obsidian\tomarchy-aarch64/obsidian-appimage" in sources_map
+        and "minecraft-launcher\textra/prismlauncher" in sources_map
+        and "omarchy-pkg-resolve-aarch64-sources" in read(GUEST / "native-overlay/usr/local/share/try-omarchy/aarch64-unavailable-packages"),
+        "Install-menu names that exist only in the sync-only aarch64 repositories are routed to explicit targets",
+    )
+    package_list_text = read(GUEST / "packages.txt")
+    check(
+        "omarchy/omarchy-keyring" in package_list_text
+        and all(
+            f"omarchy/{name}" in package_list_text
+            for name in (
+                "aether",
+                "cliamp",
+                "herdr",
+                "localsend",
+                "omacalc",
+                "omacut",
+                "omasnap",
+                "omatrack",
+                "omawrite",
+                "omazed",
+                "tensaku",
+            )
+        ),
+        "the factory preinstalls Omarchy's own applications from the edge aarch64 channel",
     )
     check(
         "IgnorePkg = linux-aarch64 linux-aarch64-headers hyprland aquamarine hyprtoolkit"

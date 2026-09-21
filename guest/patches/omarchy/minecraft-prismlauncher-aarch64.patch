@@ -1,0 +1,40 @@
+--- a/default/omarchy/omarchy-menu.jsonc
++++ b/default/omarchy/omarchy-menu.jsonc
+@@ -247,7 +247,7 @@
+   "install.ai.perplexity": {"icon":"","iconFont":"omarchy","label":"Perplexity","when":"! omarchy-pkg-present perplexity","action":"omarchy-install-and-launch Perplexity perplexity perplexity"},
+   "install.gaming.steam": {"icon":"","label":"Steam","when":"! omarchy-pkg-present steam","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-steam"},
+   "install.gaming.retroarch": {"icon":"󰯉","label":"RetroArch","when":"! omarchy-pkg-present retroarch","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-retroarch"},
+-  "install.gaming.minecraft": {"icon":"󰍳","label":"Minecraft","when":"! omarchy-pkg-present minecraft-launcher","action":"omarchy-install-and-launch Minecraft minecraft-launcher minecraft-launcher"},
++  "install.gaming.minecraft": {"icon":"󰍳","label":"Minecraft","when":"! omarchy-pkg-present prismlauncher","action":"omarchy-install-and-launch Minecraft prismlauncher org.prismlauncher.PrismLauncher"},
+   "install.gaming.geforce-now": {"icon":"󰢹","label":"NVIDIA GeForce NOW","when":"! flatpak info com.nvidia.geforcenow","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-geforce-now"},
+   "install.gaming.xbox-cloud": {"icon":"","label":"Xbox Cloud Gaming","when":"[[ ! -f \"$HOME/.local/share/applications/Xbox Cloud Gaming.desktop\" ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-xbox-cloud"},
+   "install.gaming.xbox-controllers": {"icon":"󰂯","label":"Xbox Controllers","when":"! omarchy-pkg-present xpadneo-dkms","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-xbox-controllers"},
+@@ -307,7 +307,7 @@
+   "remove.service.tailscale": {"icon":"","label":"Tailscale","when":"omarchy-pkg-present tailscale","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-service-tailscale"},
+   "remove.gaming.steam": {"icon":"","label":"Steam","when":"omarchy-pkg-present steam","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-steam"},
+   "remove.gaming.retroarch": {"icon":"","label":"RetroArch","when":"omarchy-pkg-present retroarch","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-retroarch"},
+-  "remove.gaming.minecraft": {"icon":"󰍳","label":"Minecraft","when":"omarchy-pkg-present minecraft-launcher","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-minecraft"},
++  "remove.gaming.minecraft": {"icon":"󰍳","label":"Minecraft","when":"omarchy-pkg-present prismlauncher","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-minecraft"},
+   "remove.gaming.geforce-now": {"icon":"󰢹","label":"NVIDIA GeForce NOW","when":"flatpak info com.nvidia.geforcenow","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-geforce-now"},
+   "remove.gaming.xbox-cloud": {"icon":"","label":"Xbox Cloud Gaming","when":"[[ -f \"$HOME/.local/share/applications/Xbox Cloud Gaming.desktop\" ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-xbox-cloud"},
+   "remove.gaming.xbox-controllers": {"icon":"󰖺","label":"Xbox Controllers (󰂯)","when":"omarchy-pkg-present xpadneo-dkms","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-xbox-controllers"},
+--- a/bin/omarchy-remove-gaming-minecraft
++++ b/bin/omarchy-remove-gaming-minecraft
+@@ -5,13 +5,15 @@
+ 
+ set -e
+ 
+-omarchy-pkg-drop minecraft-launcher
++# Try Omarchy: the official launcher is x86_64-only; Prism Launcher is the aarch64 Minecraft launcher.
++omarchy-pkg-drop prismlauncher
+ 
+ rm -rf \
+   "$HOME/.minecraft" \
+   "$HOME/.config/Minecraft Launcher" \
+   "$HOME/.local/share/minecraft-launcher" \
+-  "$HOME/.cache/minecraft"
++  "$HOME/.cache/minecraft" \
++  "$HOME/.local/share/PrismLauncher"
+ 
+ echo ""
+ echo "Minecraft and its data have been removed."

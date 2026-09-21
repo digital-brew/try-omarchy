@@ -50,7 +50,7 @@ noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
 nss-mdns
-omarchy-keyring
+omarchy/omarchy-keyring
 openssh
 pacman-contrib
 pipewire
@@ -95,3 +95,16 @@ zstd
 fuse-overlayfs
 passt
 podman
+
+# Omarchy's own applications, from the edge aarch64 channel (sync-only repo, so they must be named explicitly).
+omarchy/aether
+omarchy/cliamp
+omarchy/herdr
+omarchy/localsend
+omarchy/omacalc
+omarchy/omacut
+omarchy/omasnap
+omarchy/omatrack
+omarchy/omawrite
+omarchy/omazed
+omarchy/tensaku

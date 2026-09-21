@@ -1,0 +1,8 @@
+# Explicit aarch64 package sources for Try Omarchy.
+# Format: requested-package<TAB>explicit pacman targets (space separated)
+# Names not listed here are resolved automatically by
+# omarchy-pkg-resolve-aarch64-sources against the sync-only repositories.
+obsidian	omarchy-aarch64/obsidian-appimage
+obsidian-bin	omarchy-aarch64/obsidian-appimage
+obsidian-appimage	omarchy-aarch64/obsidian-appimage
+minecraft-launcher	extra/prismlauncher
