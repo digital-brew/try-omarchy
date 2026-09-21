@@ -91,3 +91,7 @@ xorg-xwayland
 zoxide
 zram-generator
 zstd
+# Rootless Podman for Lerd (the pinned lerd binary is registered separately).
+fuse-overlayfs
+passt
+podman

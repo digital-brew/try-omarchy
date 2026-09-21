@@ -471,6 +471,13 @@ def main() -> None:
         "man-db" in requested_packages and "man-db" in packages,
         "browser help probes have the man command available in the factory",
     )
+    package_text_text = package_text.decode()
+    check(
+        "\npodman\n" in package_text_text
+        and "\npasst\n" in package_text_text
+        and "\nfuse-overlayfs\n" in package_text_text,
+        "factory transaction includes rootless Podman, passt, and fuse-overlayfs for Lerd",
+    )
     yay = spec.get("supplyChain", {}).get("yay", {})
     check(
         set(yay)
@@ -495,6 +502,23 @@ def main() -> None:
             for key in ("sha256", "binarySha256", "licenseSha256")
         ),
         "official ARM64 yay release and license are fully pinned",
+    )
+    lerd = spec.get("supplyChain", {}).get("lerd", {})
+    check(
+        lerd
+        == {
+            "version": "1.35.0",
+            "commit": "8af835bab4462974f94911f6964fd1934d8d944c",
+            "repository": "https://github.com/lerd-env/lerd",
+            "url": "https://github.com/lerd-env/lerd/releases/download/v1.35.0/lerd_1.35.0_linux_arm64.tar.gz",
+            "sha256": "88bc293fa25564f90fd8ff10f3c3c0f235b00e22471fb6ea2efb5cc76d6efc70",
+            "binarySha256": "afee76cf8adc9fe9fffdaa19c979319655c1dd58dfdb5f2966048f15957f8b5b",
+            "reportedVersion": "lerd version 1.35.0 (commit 8af835bab4462974f94911f6964fd1934d8d944c, built 2026-09-16T19:10:03Z)",
+            "license": "MIT",
+            "licenseUrl": "https://raw.githubusercontent.com/lerd-env/lerd/v1.35.0/LICENSE",
+            "licenseSha256": "eeeb22e0f4308d71cfbce833f57f7615f3a07c4c875ade83ef593d3337d41ab1",
+        },
+        "official pinned Lerd ARM64 release is fully pinned",
     )
     vivaldi = spec.get("supplyChain", {}).get("vivaldi", {})
     check(
@@ -700,6 +724,12 @@ def main() -> None:
         and vivaldi["rpmSha256"] in launcher
         and vivaldi["signingFingerprint"] in launcher,
         "native launcher accepts only the reviewed signed Vivaldi ARM64 release",
+    )
+    check(
+        'supply_chain.get("lerd")' in launcher
+        and '"build spec lerd component"' in launcher
+        and lerd["binarySha256"] in launcher,
+        "native launcher accepts only the reviewed official Lerd ARM64 release",
     )
     voxtype_identity = hashlib.sha256(
         json.dumps(
@@ -970,9 +1000,10 @@ def main() -> None:
         "pacman recovery files snapshot the final local-repository configuration",
     )
     check(
-        "expected_archive_count=7" in local_repository
+        "expected_archive_count=8" in local_repository
         and "factory repository is missing pinned ttfx" in local_repository
         and "factory repository is missing pinned yay" in local_repository
+        and "factory repository is missing pinned lerd" in local_repository
         and "factory repository is missing patched Hyprland" in local_repository
         and "factory repository is missing pinned Voxtype" in local_repository
         and "factory repository is missing the battery DKMS module" in local_repository
@@ -1001,6 +1032,11 @@ def main() -> None:
         "[zram0]" in zram_override
         and "compression-algorithm = lzo-rle" in zram_override,
         "factory zram uses the ARM kernel's supported lzo-rle backend",
+    )
+    lerd_sysctl = read(GUEST / "native-overlay/etc/sysctl.d/90-try-omarchy-lerd.conf")
+    check(
+        "net.ipv4.ip_unprivileged_port_start = 80" in lerd_sysctl,
+        "factory presets the unprivileged-port sysctl Lerd's rootless nginx needs",
     )
     cjk_fontconfig = read(
         GUEST / "factory-overlay/etc/fonts/conf.d/30-try-omarchy.conf"
@@ -1154,6 +1190,19 @@ def main() -> None:
         and "provides = yay=$version" in register_yay
         and "runuser -u alpm -- /usr/bin/yay --version" in register_yay,
         "guest installs verified yay before sealing its local repository",
+    )
+    register_lerd = read(GUEST / "scripts/register-pinned-lerd.sh")
+    check(
+        "register-pinned-lerd.sh" in build
+        and build.index("register-pinned-lerd.sh")
+        < build.index("register-local-repository.sh")
+        and "download digest mismatch" in register_lerd
+        and "lerd archive has an unexpected member set" in register_lerd
+        and "installed lerd binary digest mismatch" in register_lerd
+        and "depend = podman" in register_lerd
+        and "provides = lerd=$version" in register_lerd
+        and 'arch-chroot "$root" /usr/bin/lerd --version' in register_lerd,
+        "guest installs verified lerd before sealing its local repository",
     )
     register_ttfx = read(GUEST / "scripts/register-pinned-ttfx.sh")
     check(
@@ -1317,6 +1366,11 @@ def main() -> None:
         and "pacman -Qoq /usr/local/bin/omarchy-native-cursor-restore" in finalizer
         and "Obsolete ttfx compatibility command shadows" in finalizer,
         "finalizer requires packaged ttfx without a shadowing compatibility command",
+    )
+    check(
+        "Pinned lerd identity mismatch" in finalizer
+        and "Missing pinned ARM64 lerd" in finalizer,
+        "finalizer requires the pinned official Lerd binary identity",
     )
     check(
         "pacman -Q hyprland" in finalizer
@@ -1869,9 +1923,12 @@ def main() -> None:
         and "mountpoint -q /mnt/mac" in backup_text
         and 'omarchy-pkg-add "$package" 2>/dev/null || omarchy-pkg-aur-add "$package"' in restore_text
         and "could not be installed on this aarch64 guest" in restore_text
+        and 'lerd db:export --no-pull -o "$dump"' in backup_text
+        and 'lerd db:import --fresh --no-pull "$dump"' in restore_text
+        and "--lerd-only" in restore_text
         and '"$root/usr/local/bin/try-omarchy-backup"' in configure
         and '"$root/usr/local/bin/try-omarchy-restore"' in configure,
-        "try-omarchy-backup and try-omarchy-restore carry added packages (with AUR fallback) and the home directory between VMs",
+        "try-omarchy-backup and try-omarchy-restore carry added packages (with AUR fallback), Lerd databases, and the home directory between VMs",
     )
     kitty_wrapper = GUEST / "native-overlay/usr/local/bin/kitty"
     kitty_wrapper_text = read(kitty_wrapper)

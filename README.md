@@ -432,7 +432,9 @@ routes aarch64-only names to the right repositories, falls back to the AUR,
 and lists anything that still failed instead of stopping. `--packages-only`
 and `--home-only` restrict either command; `--yes` skips the confirmation
 before the home directory is unpacked over the current one. Software installed
-outside pacman (1Password, Vivaldi, mise toolchains) is not captured.
+outside pacman (1Password, Vivaldi, mise toolchains) is not captured. Lerd
+site databases are exported per site by `try-omarchy-backup` and imported by
+`try-omarchy-restore`, or later with `--lerd-only` once `lerd install` has run.
 
 ## VM disk size
 
@@ -519,6 +521,14 @@ Deleting a browser's flags file (`~/.config/chromium-flags.conf`,
 browser. The Vivaldi installer also honours `OMARCHY_BROWSER_KEEP_GPU`, so
 launching `omarchy install browser vivaldi` with `OMARCHY_BROWSER_KEEP_GPU=1`
 in the environment omits the software-rendering flags without editing any file.
+
+## Lerd
+
+Try Omarchy ships [Lerd](https://github.com/lerd-env/lerd) pinned at
+`/usr/bin/lerd`, alongside rootless Podman and the unprivileged-port sysctl its
+per-site nginx binds 80 and 443 with. Run `lerd install` once per VM to create
+your per-user services and sites; `lerd update` defers to the binary baked into
+the image instead of replacing it.
 
 ## Requirements
 

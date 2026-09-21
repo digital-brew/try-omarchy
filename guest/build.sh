@@ -302,6 +302,11 @@ python3 "$guest_dir/scripts/apply-omarchy-backports.py" --root "$root" --spec "$
   --work "$work" \
   --spec "$spec" \
   --pacman-config "$pacman_config"
+"$guest_dir/scripts/register-pinned-lerd.sh" \
+  --root "$root" \
+  --work "$work" \
+  --spec "$spec" \
+  --pacman-config "$pacman_config"
 "$guest_dir/scripts/register-native-battery-module.sh" \
   --root "$root" \
   --work "$work" \

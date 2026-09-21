@@ -1,12 +1,15 @@
 #!/bin/bash
 # omarchy:summary=Reinstall your added packages and restore your home directory from a try-omarchy-backup
-# omarchy:args=[--home-only|--packages-only] [--yes] [SOURCE_DIR]
+# omarchy:args=[--home-only|--packages-only|--lerd-only] [--yes] [SOURCE_DIR]
 #
 # Packages are installed one at a time through omarchy-pkg-add, which routes
 # aarch64-only names to the right repositories, and fall back to the AUR via
 # omarchy-pkg-aur-add. Anything that still fails is listed at the end rather
 # than stopping the restore. The home archive is unpacked over the current
-# home directory, so existing files with the same names are replaced.
+# home directory, so existing files with the same names are replaced. Lerd
+# site databases exported by the backup are imported with `lerd db:import
+# --fresh` once Lerd itself is set up (`lerd install`); --lerd-only reruns just
+# that step later.
 set -euo pipefail
 
 usage() {
@@ -22,6 +25,7 @@ while (($#)); do
   case "$1" in
     --home-only) mode=home ;;
     --packages-only) mode=packages ;;
+    --lerd-only) mode=lerd ;;
     -y|--yes) assume_yes=1 ;;
     -h|--help) usage; exit 0 ;;
     -*) fail "unknown option: $1" ;;
@@ -45,7 +49,7 @@ print(f"Backup from {m.get('createdAt', '?')} on {m.get('hostname', '?')} ({m.ge
 PY
 fi
 
-if (( ! assume_yes )) && [[ $mode != packages ]] && [[ -f $source_dir/home.tar.zst ]]; then
+if (( ! assume_yes )) && [[ $mode == all || $mode == home ]] && [[ -f $source_dir/home.tar.zst ]]; then
   read -r -p "Restore the home directory over $HOME, replacing files with the same names? [y/N] " answer
   [[ $answer == [Yy]* ]] || { echo "Skipping the home directory (use --packages-only to silence this)."; mode=packages; }
 fi
@@ -53,7 +57,7 @@ fi
 failed=()
 restored=0
 skipped=0
-if [[ $mode != home ]]; then
+if [[ $mode == all || $mode == packages ]]; then
   [[ -r $source_dir/packages.txt ]] || fail "packages.txt not found in $source_dir"
   while IFS= read -r package; do
     package=${package%%#*}
@@ -73,17 +77,53 @@ if [[ $mode != home ]]; then
   printf 'Packages: %d installed, %d already present, %d failed\n' "$restored" "$skipped" "${#failed[@]}"
 fi
 
-if [[ $mode != packages ]]; then
+if [[ $mode == all || $mode == home ]]; then
   [[ -r $source_dir/home.tar.zst ]] || fail "home.tar.zst not found in $source_dir"
   tar --zstd -xf "$source_dir/home.tar.zst" -C "$HOME" || fail "home directory restore failed"
   echo "Home directory restored from $source_dir/home.tar.zst"
 fi
 
+lerd_failed=()
+lerd_index="$source_dir/lerd-databases/index.tsv"
+if [[ $mode == all || $mode == lerd ]] && [[ -r $lerd_index ]]; then
+  if ! command -v lerd >/dev/null 2>&1; then
+    echo "Lerd is not installed here; skipping the Lerd database dumps in $source_dir/lerd-databases"
+  elif ! lerd status >/dev/null 2>&1; then
+    echo "Lerd is not set up yet. Run 'lerd install', start the database services, then:"
+    echo "  try-omarchy-restore --lerd-only $source_dir"
+  else
+    lerd_imported=0
+    while IFS=$'\t' read -r site_name site_path; do
+      [[ -n $site_name ]] || continue
+      dump="$source_dir/lerd-databases/${site_name//\//_}.sql"
+      if [[ ! -d $site_path ]]; then
+        lerd_failed+=("$site_name (site directory missing: $site_path)")
+      elif [[ ! -s $dump ]]; then
+        lerd_failed+=("$site_name (dump missing)")
+      elif (cd "$site_path" && lerd db:import --fresh --no-pull "$dump"); then
+        lerd_imported=$((lerd_imported + 1))
+      else
+        lerd_failed+=("$site_name")
+      fi
+    done <"$lerd_index"
+    printf 'Lerd: imported %d site database(s), %d failed\n' "$lerd_imported" "${#lerd_failed[@]}"
+  fi
+fi
+
+status=0
 if (( ${#failed[@]} )); then
   echo
   echo "These packages could not be installed on this aarch64 guest:"
   printf '  %s\n' "${failed[@]}"
   echo "Install-menu apps outside pacman (1Password, Vivaldi, mise toolchains) must be set up again from the Install menu."
-  exit 2
+  status=2
 fi
+if (( ${#lerd_failed[@]} )); then
+  echo
+  echo "These Lerd site databases were not imported:"
+  printf '  %s\n' "${lerd_failed[@]}"
+  echo "Fix the cause and rerun: try-omarchy-restore --lerd-only $source_dir"
+  status=2
+fi
+(( status == 0 )) || exit "$status"
 echo "Restore complete. Log out and back in so restored Hyprland and shell settings take effect."

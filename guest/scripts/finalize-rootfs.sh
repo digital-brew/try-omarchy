@@ -58,6 +58,9 @@ expected_mise=$(read_spec '["supplyChain"]["mise"]["reportedVersion"]')
 expected_ttfx=$(read_spec '["supplyChain"]["ttfx"]["reportedVersion"]')
 [[ -x /usr/bin/ttfx ]] || { echo "Missing pinned ARM64 ttfx" >&2; exit 1; }
 [[ $(/usr/bin/ttfx --version) == "$expected_ttfx" ]] || { echo "Pinned ttfx identity mismatch" >&2; exit 1; }
+expected_lerd=$(read_spec '["supplyChain"]["lerd"]["reportedVersion"]')
+[[ -x /usr/bin/lerd ]] || { echo "Missing pinned ARM64 lerd" >&2; exit 1; }
+[[ $(/usr/bin/lerd --version) == "$expected_lerd" ]] || { echo "Pinned lerd identity mismatch" >&2; exit 1; }
 expected_hyprland="$(read_spec '["supplyChain"]["hyprland"]["version"]')-$(read_spec '["supplyChain"]["hyprland"]["pkgrel"]')"
 [[ $(pacman -Q hyprland) == "hyprland $expected_hyprland" ]] || {
   echo "Rounded-border Hyprland backport is missing" >&2
