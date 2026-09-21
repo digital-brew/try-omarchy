@@ -78,10 +78,16 @@ camera_usage=$(/usr/libexec/PlistBuddy -c 'Print :NSCameraUsageDescription' "$in
 }
 [[ -n $camera_usage ]] || fail "built app has an empty camera usage description"
 
+disk_environment=()
+if [[ -n ${OMARCHY_QEMU_GPU_DISK_GIB:-} ]]; then
+  disk_environment=(--env "OMARCHY_QEMU_GPU_DISK_GIB=$OMARCHY_QEMU_GPU_DISK_GIB")
+fi
+
 exec /usr/bin/open \
   -n \
   -W \
   --env OMARCHY_QEMU_GPU_DEVELOPMENT_MULTI_DISK=1 \
+  ${disk_environment[@]+"${disk_environment[@]}"} \
   --stdin /dev/null \
   --stdout /dev/null \
   --stderr /dev/null \

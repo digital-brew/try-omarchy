@@ -31,10 +31,15 @@ struct VMResourceLimits: Equatable {
         ).map { $0 / 1024 }
     }
 
+    /// This fork assumes the Mac is dedicated to Try Omarchy while the VM runs,
+    /// so new installs default to the most the host allows: every processor core
+    /// and the largest memory choice that still leaves macOS its headroom.
+    /// Resources → Configure… can lower either before any launch.
     var defaults: VMResources {
         VMResources(
-            cpuCount: min(8, cpuRange.upperBound),
-            memoryGiB: MemoryPolicy.recommendedMemoryMiB(hostMemoryMiB: hostMemoryMiB) / 1024
+            cpuCount: cpuRange.upperBound,
+            memoryGiB: memoryChoicesGiB.last
+                ?? (MemoryPolicy.recommendedMemoryMiB(hostMemoryMiB: hostMemoryMiB) / 1024)
         )
     }
 

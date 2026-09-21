@@ -129,7 +129,7 @@ def main() -> None:
         },
         "SSH preset and boot activation are an exact loopback-only runtime contract",
     )
-    check(spec["runtime"]["storage"]["expandedSizeMiB"] == 24576, "working disk expands to 24 GiB")
+    check(spec["runtime"]["storage"]["expandedSizeMiB"] == 153600, "working disk expands to 150 GiB")
     check(
         set(spec["inputs"]) == {"packages", "packageLock", "pacmanConfig", "abiPackagePins", "packageRepositoryMirrors"},
         "spec has a minimal input set",

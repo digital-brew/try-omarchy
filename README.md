@@ -434,6 +434,21 @@ and `--home-only` restrict either command; `--yes` skips the confirmation
 before the home directory is unpacked over the current one. Software installed
 outside pacman (1Password, Vivaldi, mise toolchains) is not captured.
 
+## VM disk size
+
+A new VM is created with a 150 GiB working disk. The factory image is cloned
+and the clone is expanded sparsely, so the disk only ever occupies the space
+the guest has actually written. On the first boot the guest's
+`systemd-growfs-root.service` grows its ext4 filesystem to fill the clone.
+Resetting or reinstalling the Mac app never resizes a saved VM.
+
+Scripted launches can choose a different size by setting
+`OMARCHY_QEMU_GPU_DISK_GIB` to a whole number of GiB from 1 to 8192 before
+launching. The value is validated before QEMU starts, and the working disk can
+never be smaller than the factory image it was cloned from. The size is fixed
+when the disk is created; growing a saved VM later is covered under
+**Growing an existing VM disk**.
+
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)
@@ -620,7 +635,7 @@ you choose — it never creates a folder inside it on your behalf.
   the moment it was created. Network volumes are refused because the VM's disk
   lock is unreliable on them. Anything else is turned away when you pick it, with
   the actual format named.
-- You need roughly 7 GB free to create the VM, and up to 30 GB as it fills. The
+- You need roughly 7 GB free to create the VM, and up to 162 GB as it fills. The
   disk is sparse, so it only ever occupies what the guest has actually written.
 - **Changing the location does not move your existing VM.** It stays where it
   is, and switching back reaches it again.

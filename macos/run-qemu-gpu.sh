@@ -495,7 +495,7 @@ storage = {
     "mode": "ephemeral",
     "initialization": "apfs-clone",
     "fallback": "full-copy",
-    "expandedSizeMiB": 24576,
+    "expandedSizeMiB": 153600,
 }
 if (
     runtime.get("kernel") != "vmlinuz-linux"
@@ -932,6 +932,18 @@ IFS=$'\t' read -r bundle_identity source_disk_sha source_disk_bytes compressed_d
 [[ $compressed_disk_bytes =~ ^[1-9][0-9]*$ ]] || fail "validated compressed rootfs size is invalid"
 [[ $expanded_disk_bytes =~ ^[1-9][0-9]*$ ]] || fail "validated working-disk size is invalid"
 (( expanded_disk_bytes >= source_disk_bytes )) || fail "working disk cannot be smaller than its source"
+if [[ -n ${OMARCHY_QEMU_GPU_DISK_GIB:-} ]]; then
+  disk_gib=$OMARCHY_QEMU_GPU_DISK_GIB
+  [[ $disk_gib =~ ^[1-9][0-9]{0,3}$ ]] || \
+    fail "OMARCHY_QEMU_GPU_DISK_GIB must be a whole number of GiB from 1 to 8192"
+  (( disk_gib <= 8192 )) || \
+    fail "OMARCHY_QEMU_GPU_DISK_GIB must be a whole number of GiB from 1 to 8192"
+  expanded_disk_bytes=$(( disk_gib * 1024 * 1024 * 1024 ))
+  (( expanded_disk_bytes >= source_disk_bytes )) || {
+    fail "OMARCHY_QEMU_GPU_DISK_GIB produces a working disk smaller than its source"
+  }
+fi
+disk_display="$(( expanded_disk_bytes / 1024 / 1024 / 1024 )) GiB"
 [[ -n $kernel_command_line ]] || fail "validated kernel command line is empty"
 case " $kernel_command_line " in
   *' omarchy.virgl_dual_source='*)
@@ -1757,7 +1769,7 @@ if [[ $QEMU_SELECTED_STORAGE_MODE == persistent ]]; then
   echo "[qemu-gpu] Starting the persistent ARM64 VirGL guest with $vcpu_count vCPUs and $memory_display RAM." >&2
   echo "[qemu-gpu] User data: $QEMU_PERSISTENT_STORAGE_DIRECTORY" >&2
 else
-  echo "[qemu-gpu] Starting a disposable ARM64 VirGL guest with $vcpu_count vCPUs and $memory_display RAM." >&2
+  echo "[qemu-gpu] Starting a disposable ARM64 VirGL guest with $vcpu_count vCPUs and $memory_display RAM, and a $disk_display disk." >&2
 fi
 if [[ -n $shared_folder ]]; then
   echo "[qemu-gpu] Shared folder: $shared_folder (guest ~/$shared_folder_name)" >&2

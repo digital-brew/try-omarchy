@@ -133,7 +133,7 @@ systemctl enable omarchy-native-mac-share.service
 systemctl enable omarchy-native-battery-bridge.service
 systemctl enable try-omarchy-migrate-alacritty.service
 
-# The app expands only the writable APFS clone to 24 GiB. Grow ext4 online so
+# The app expands only the writable APFS clone to 150 GiB. Grow ext4 online so
 # Omarchy's update-safety check sees that working capacity.
 [[ -f /usr/lib/systemd/system/systemd-growfs-root.service ]] || { echo "Missing systemd root grow service" >&2; exit 1; }
 mkdir -p /etc/systemd/system/local-fs.target.wants

@@ -197,7 +197,7 @@ _qps_volume_filesystem() {
 # The working disk is an APFS clone of the factory image that is then expanded
 # sparsely to its full size. Sparse files are the part that cannot be given up:
 # on exFAT a `truncate` to the working size allocates every byte immediately, so
-# a 24 GiB disk would cost 24 GiB the moment it is created. Cloning matters less
+# a 150 GiB disk would cost 150 GiB the moment it is created. Cloning matters less
 # — a full copy works, it just costs another 6 GiB and takes far longer.
 # Refuse anything but APFS, naming what was actually found.
 _qps_assert_volume_supported() {
