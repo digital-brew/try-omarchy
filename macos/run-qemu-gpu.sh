@@ -1646,7 +1646,12 @@ qemu_args=(
   -action 'reboot=reset,shutdown=poweroff'
   -netdev "$qemu_netdev"
   -device "virtio-net-pci,id=omarchy-nic,netdev=omarchy-net,mac=$network_mac,romfile="
-  -audiodev 'sdl,id=omarchy-audio'
+  # QEMU drains the emulated HDA output ring into SDL from this timer. At the
+  # 10 ms default the ring can run dry between ticks under load and the host
+  # backend discards audio (measured upstream as ~37 discontinuities per
+  # channel in a 45 s tone); at 1 ms it stays fed. The guest-side PipeWire
+  # quantum handles the other half of the problem.
+  -audiodev 'sdl,id=omarchy-audio,timer-period=1000'
   -device 'intel-hda,id=omarchy-hda,romfile='
   -device 'hda-micro,bus=omarchy-hda.0,audiodev=omarchy-audio'
   -serial none

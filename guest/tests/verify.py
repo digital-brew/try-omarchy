@@ -682,6 +682,7 @@ def main() -> None:
         and '"build spec hyprland component"' in launcher
         and '"build spec hyprland build packages"' in launcher
         and hyprland_identity in launcher
+        and "-audiodev 'sdl,id=omarchy-audio,timer-period=1000'" in launcher
         and 'supply_chain.get("aquamarine")' in launcher
         and '"build spec aquamarine component"' in launcher
         and aquamarine["pkgbuildSha256"] in launcher
