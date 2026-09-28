@@ -1,0 +1,381 @@
+#!/bin/bash
+# omarchy:summary=Recreate this setup in a fresh Try Omarchy VM from a snapshot
+# try-omarchy --restore — recreate this machine's setup in a fresh Try Omarchy VM
+# from a try-omarchy --backup directory.
+#
+#   try-omarchy --restore [--only STEP[,STEP..]] [--skip STEP[,STEP..]] [--yes] [SOURCE_DIR]
+#
+# Steps, in order:
+#   packages   repo packages via omarchy-pkg-add
+#   aur        foreign packages: built files (pacman -U), ZenNotes from GitHub,
+#              1Password app via the Omarchy installer, the rest via omarchy-pkg-aur-add
+#   flatpaks   Flathub apps (user installation) and their per-app overrides
+#   home       unpack home.tar.zst over $HOME (asks first unless --yes)
+#   system     enable services, unowned udev rules and /usr/local/bin wrappers, groups, login shell
+#   tools      mise toolchains, QMK CLI venv + firmware checkout, font cache
+#   launchers  remove the stock web apps listed in REMOVE_LAUNCHERS, hide the
+#              duplicates in HIDE_LAUNCHERS, and install the same list as an
+#              omarchy post-update hook so they stay gone after updates
+#   theme      apply the snapshot's theme and font (keeping foot's font line), restart the shell
+#   verify     check the restored plugins, bar widgets, mailto handler, icon links and
+#              agent state; fix what it can and note the rest, then restart the shell
+#   lerd       import Lerd site databases (needs `lerd install` first)
+#   todo       print the manual steps that need a human (logins, tokens)
+#
+# Default source: /mnt/mac/omarchy-rebuild/snapshot. Anything that fails is
+# listed at the end instead of stopping the run; rerun with --only to retry.
+set -uo pipefail
+
+usage() { sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'; }
+fail() { echo "try-omarchy --restore: $*" >&2; exit 1; }
+say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+ALL_STEPS="packages aur flatpaks home system tools launchers theme verify lerd todo"
+only=""; skip=""; yes=0; src=""
+while (($#)); do
+  case "$1" in
+    --only) [[ -n ${2:-} ]] || fail "--only needs a step list"; only=${2//,/ }; shift ;;
+    --skip) [[ -n ${2:-} ]] || fail "--skip needs a step list"; skip=${2//,/ }; shift ;;
+    -y|--yes) yes=1 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) fail "unknown option: $1" ;;
+    *) [[ -z $src ]] || fail "only one source directory is accepted"; src=$1 ;;
+  esac; shift
+done
+for s in $only $skip; do
+  [[ " $ALL_STEPS " == *" $s "* ]] || fail "unknown step '$s' (steps: ${ALL_STEPS// /, })"
+done
+if [[ -z $src ]]; then
+  mountpoint -q /mnt/mac || fail "the Mac share is not mounted; enable it in the Try Omarchy start menu or pass a source directory"
+  src=/mnt/mac/omarchy-rebuild/snapshot
+fi
+[[ -d $src ]] || fail "snapshot not found: $src"
+src=$(cd "$src" && pwd -P)
+want() { local s=$1; [[ -n $only && " $only " != *" $s "* ]] && return 1; [[ " $skip " == *" $s "* ]] && return 1; return 0; }
+failed=()
+note() { failed+=("$*"); echo "   !! $*"; }
+python3 - "$src/manifest.json" <<'PY' 2>/dev/null || true
+import json, sys; m = json.load(open(sys.argv[1]))
+print(f"Snapshot from {m.get('createdAt','?')} on {m.get('hostname','?')} ({m.get('tryOmarchyRuntime','?')}), theme {m.get('theme','?')}, font {m.get('font','?')}")
+PY
+manifest_get() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2],""))' "$src/manifest.json" "$1" 2>/dev/null; }
+have() { pacman -Qq "$1" >/dev/null 2>&1; }
+
+# ---------------------------------------------------------------- packages
+if want packages && [[ -r $src/packages-repo.txt ]]; then
+  say "Repo packages"
+  n=0; s=0
+  while read -r pkg; do
+    [[ -n $pkg ]] || continue
+    if have "$pkg"; then s=$((s+1)); continue; fi
+    echo "   installing $pkg"
+    if omarchy-pkg-add "$pkg" >/dev/null 2>&1; then n=$((n+1)); else note "package $pkg (try: omarchy-pkg-add $pkg)"; fi
+  done <"$src/packages-repo.txt"
+  echo "   $n installed, $s already present"
+fi
+
+# --------------------------------------------------------------------- aur
+if want aur && [[ -r $src/aur-sources.txt ]]; then
+  say "Foreign packages"
+  files=()
+  while IFS=$'\t' read -r pkg source; do
+    [[ -n $pkg ]] || continue
+    have "$pkg" && continue
+    case "$source" in
+      file:*) f="$src/aur-packages/${source#file:}"; [[ -f $f ]] && files+=("$f") || note "built file missing for $pkg" ;;
+      github:ZenNotes/zennotes)
+        echo "   downloading ZenNotes (aarch64 .pacman from GitHub)"
+        url=$(curl -s --max-time 30 https://api.github.com/repos/ZenNotes/zennotes/releases/latest | python3 -c 'import json,sys; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith("linux-aarch64.pacman")))' 2>/dev/null)
+        tmp=$(mktemp -d); if [[ -n $url ]] && curl -sL --max-time 300 -A curl/8 -o "$tmp/zennotes.pacman" "$url"; then
+          # Its dependency list names http-parser, which Arch dropped years ago and the binary does not use.
+          sudo pacman -U --needed --noconfirm --assume-installed http-parser --assume-installed libappindicator-gtk3 "$tmp/zennotes.pacman" || note "ZenNotes install failed ($tmp/zennotes.pacman)"
+        else note "ZenNotes download failed"; fi ;;
+      *) echo "   building $pkg from the AUR"; omarchy-pkg-aur-add "$pkg" || note "AUR build failed: $pkg" ;;
+    esac
+  done <"$src/aur-sources.txt"
+  if ((${#files[@]})); then
+    echo "   installing ${#files[@]} prebuilt package file(s)"
+    sudo pacman -U --needed --noconfirm "${files[@]}" || note "pacman -U of prebuilt files failed; retry: sudo pacman -U $src/aur-packages/*"
+  fi
+  if [[ ! -x /opt/1Password/1password ]]; then
+    echo "   installing the 1Password desktop app (omarchy install service 1password)"
+    omarchy install service 1password || note "1Password app install failed"
+  fi
+fi
+
+# ---------------------------------------------------------------- flatpaks
+if want flatpaks && [[ -s $src/flatpaks.txt ]]; then
+  say "Flatpaks"
+  have flatpak || omarchy-pkg-add flatpak
+  flatpak remote-list --user 2>/dev/null | grep -q '^flathub' || flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+  while IFS=$'\t' read -r app origin inst; do
+    [[ -n $app ]] || continue
+    flatpak info --user "$app" >/dev/null 2>&1 && continue
+    echo "   $app"
+    flatpak install --user -y --noninteractive "${origin:-flathub}" "$app" || note "flatpak $app"
+  done <"$src/flatpaks.txt"
+  if [[ -d $src/flatpak-overrides ]]; then
+    mkdir -p "$HOME/.local/share/flatpak/overrides" && cp -a "$src/flatpak-overrides/." "$HOME/.local/share/flatpak/overrides/"
+  fi
+fi
+
+# -------------------------------------------------------------------- home
+if want home && [[ -f $src/home.tar.zst ]]; then
+  say "Home directory"
+  ok=1
+  if (( ! yes )); then read -r -p "Unpack home.tar.zst over $HOME, replacing files with the same names? [y/N] " a; [[ $a == [Yy]* ]] || ok=0; fi
+  if (( ok )); then tar --zstd -xf "$src/home.tar.zst" -C "$HOME" && echo "   restored" || note "home archive extraction failed"; else echo "   skipped"; fi
+  # The archive stores ~/linux-share as a symlink to /mnt/mac; recreate it if the VM lacks it.
+  [[ -e $HOME/linux-share ]] || ln -s /mnt/mac "$HOME/linux-share"
+fi
+
+# ------------------------------------------------------------------ system
+if want system && [[ -d $src/system ]]; then
+  say "System"
+  for u in pcscd.socket tailscaled.service; do
+    grep -qx "$u" "$src/system/services-system.txt" 2>/dev/null || continue
+    systemctl is-enabled "$u" >/dev/null 2>&1 || { echo "   enabling $u"; sudo systemctl enable --now "$u" || note "enable $u"; }
+  done
+  for rule in "$src"/system/udev/*.rules; do
+    [[ -f $rule ]] || continue
+    [[ -f /etc/udev/rules.d/$(basename "$rule") ]] || { echo "   udev: $(basename "$rule")"; sudo install -m 644 "$rule" /etc/udev/rules.d/ || note "udev rule $(basename "$rule")"; }
+  done
+  [[ -f $src/system/udev/50-qmk.rules ]] && sudo udevadm control --reload-rules && sudo udevadm trigger
+  # A current yt-dlp for TubeLander: the repo package lags and its stream URLs
+  # refuse seeks; uv keeps a per-user copy at ~/.local/bin/yt-dlp.
+  if command -v uv >/dev/null 2>&1; then
+    [[ -x $HOME/.local/bin/yt-dlp ]] || { echo "   uv tool install yt-dlp"; uv tool install yt-dlp >/dev/null 2>&1 || note "uv tool install yt-dlp"; }
+  else note "uv missing: install it, then uv tool install yt-dlp (TubeLander)"; fi
+  # Hand-made /usr/local/bin wrappers (ghostty software-GL wrapper, 1password).
+  # Files Try Omarchy ships itself already exist in the fresh VM and are skipped.
+  for f in "$src"/system/usr-local-bin/*; do
+    [[ -f $f ]] || continue
+    [[ -e /usr/local/bin/$(basename "$f") ]] || { echo "   /usr/local/bin/$(basename "$f")"; sudo install -m 755 "$f" /usr/local/bin/ || note "usr-local-bin $(basename "$f")"; }
+  done
+  for g in $(cat "$src/system/groups.txt" 2>/dev/null); do
+    [[ $g == "$USER" ]] && continue
+    id -nG | tr ' ' '\n' | grep -qx "$g" || { getent group "$g" >/dev/null && sudo usermod -aG "$g" "$USER" && echo "   added to group $g"; }
+  done
+  shell=$(cat "$src/system/shell.txt" 2>/dev/null)
+  [[ -n $shell && $(getent passwd "$USER" | cut -d: -f7) != "$shell" && -x $shell ]] && { echo "   login shell -> $shell"; chsh -s "$shell" || note "chsh $shell"; }
+  b=$(cat "$src/system/default-browser.txt" 2>/dev/null); [[ -n $b ]] && xdg-settings set default-web-browser "$b" 2>/dev/null
+  # The HP LaserJet P2035 hangs off the Mac host and is shared over IPP; the
+  # queue here is driverless (the Mac renders). CUPS state lives in /etc/cups,
+  # outside the home archive, so it is re-created rather than restored. The
+  # Mac must be awake with Printer Sharing on for the "everywhere" probe.
+  systemctl is-active cups.service >/dev/null 2>&1 || { echo "   enabling cups.service"; sudo systemctl enable --now cups.service || note "enable cups.service"; }
+  if ! lpstat -p HP_LaserJet_P2035 >/dev/null 2>&1; then
+    echo "   printer: HP_LaserJet_P2035 via the Mac"
+    sudo lpadmin -p HP_LaserJet_P2035 -E -v "ipp://DBM3RPX.local:631/printers/HP_LaserJet_P2035" -m everywhere \
+      -D "HP LaserJet P2035" -L "Shared by the Mac host (DBM3RPX)" && sudo lpadmin -d HP_LaserJet_P2035 \
+      || note "printer queue (Mac awake, sharing on? then: sudo lpadmin -p HP_LaserJet_P2035 -E -v ipp://DBM3RPX.local:631/printers/HP_LaserJet_P2035 -m everywhere)"
+  fi
+fi
+
+# ------------------------------------------------------------------- tools
+if want tools; then
+  say "Toolchains"
+  if command -v mise >/dev/null && [[ -f $HOME/.config/mise/config.toml ]]; then
+    echo "   mise install (node, claude, codex, gh, varlock ...)"
+    mise trust "$HOME/.config/mise/config.toml" >/dev/null 2>&1; mise install -y || note "mise install"
+  fi
+  if [[ -f $HOME/.local/bin/qmk || -L $HOME/.local/bin/qmk ]] && [[ ! -x $HOME/.local/share/qmk-venv/bin/qmk ]]; then
+    echo "   QMK CLI venv (no Arch Linux ARM package exists for qmk)"
+    python3 -m venv "$HOME/.local/share/qmk-venv" && "$HOME/.local/share/qmk-venv/bin/pip" install --quiet --upgrade pip qmk \
+      && ln -sfn "$HOME/.local/share/qmk-venv/bin/qmk" "$HOME/.local/bin/qmk" || note "qmk venv"
+  fi
+  if [[ -x $HOME/.local/bin/qmk && ! -d $HOME/qmk_firmware ]]; then
+    echo "   qmk setup (clones ~/qmk_firmware, several minutes)"
+    "$HOME/.local/bin/qmk" setup -y --home "$HOME/qmk_firmware" >/dev/null 2>&1 || note "qmk setup (rerun: qmk setup -y)"
+  fi
+  fc-cache -f >/dev/null 2>&1 || true
+  [[ -x $HOME/.local/bin/omarchy-refresh-applications ]] && "$HOME/.local/bin/omarchy-refresh-applications" >/dev/null 2>&1 || true
+  update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+fi
+
+# --------------------------------------------------------------- launchers
+# Stock Omarchy web apps that must stay out of the app menu. Deleting the
+# .desktop file is not enough on its own: omarchy-refresh-applications (run by
+# the tools step above, by omarchy update and by migrations) copies every
+# launcher in ~/.local/share/omarchy/applications back. So the list is also
+# written as a post-update hook, which the home archive then carries along.
+REMOVE_LAUNCHERS=("Basecamp" "Google Contacts" "Google Maps" "Google Messages" "Google Photos" "HEY" "YouTube")
+# Launchers to keep but hide from the menu (NoDisplay=true). The Chromium PWA of
+# the Lerd dashboard (installed from Chromium's menu on 2026-09-11) shows up as a
+# second "Lerd" next to the Lerd package's own lerd.desktop; the PWA still opens
+# as an app window when lerd.desktop launches the dashboard.
+HIDE_LAUNCHERS=("chrome-fpnfgjllafoobfhcdpnnhnkahdhldhoo-Default")
+if want launchers; then
+  say "Launchers"
+  hook=$HOME/.config/omarchy/hooks/post-update.d/prune-launchers.hook
+  mkdir -p "$(dirname "$hook")"
+  {
+    echo '#!/bin/bash'
+    echo '# Written by try-omarchy --restore (launchers step); edit the lists there, not here.'
+    echo '# omarchy-refresh-applications restores every stock launcher on update, so this'
+    echo '# runs as a post-update hook to remove the unwanted web apps and hide duplicates.'
+    echo 'apps=$HOME/.local/share/applications'
+    printf 'for name in'; printf ' %q' "${REMOVE_LAUNCHERS[@]}"; echo '; do rm -f "$apps/$name.desktop"; done'
+    printf 'for name in'; printf ' %q' "${HIDE_LAUNCHERS[@]}"; echo '; do'
+    echo '  f=$apps/$name.desktop; [[ -f $f ]] || continue'
+    echo '  grep -qx "NoDisplay=true" "$f" || { sed -i "/^NoDisplay=/d" "$f"; echo "NoDisplay=true" >>"$f"; }'
+    echo 'done'
+    echo 'update-desktop-database "$apps" 2>/dev/null || true'
+  } >"$hook"
+  chmod +x "$hook"
+  if bash "$hook"; then
+    echo "   removed ${#REMOVE_LAUNCHERS[@]} stock web app launcher(s), hid ${#HIDE_LAUNCHERS[@]} duplicate(s)"
+    echo "   hook installed: $hook"
+  else note "launchers hook failed ($hook)"; fi
+fi
+
+# ------------------------------------------------------------------- theme
+if want theme; then
+  say "Theme and shell"
+  t=$(manifest_get theme); f=$(manifest_get font)
+  [[ -n $t ]] && { echo "   theme: $t"; omarchy theme set "$t" >/dev/null 2>&1 || note "theme set $t"; }
+  if [[ -n $f ]]; then
+    if [[ $(omarchy font current 2>/dev/null) == "$f" ]]; then
+      echo "   font: $f (already current, restored configs left untouched)"
+    else
+      # omarchy-font-set rewrites foot's font line as "<name>:size=9", throwing
+      # away the size and the Nerd Font fallback restored from the home archive.
+      # Keep the restored line and put it back afterwards.
+      foot_ini=$HOME/.config/foot/foot.ini
+      foot_font=$(grep -m1 '^font=' "$foot_ini" 2>/dev/null || true)
+      echo "   font: $f"; omarchy font set "$f" >/dev/null 2>&1 || note "font set $f"
+      [[ -n $foot_font ]] && python3 - "$foot_ini" "$foot_font" <<'PY2'
+import re, sys
+path, line = sys.argv[1:]
+text = open(path).read()
+open(path, "w").write(re.sub(r"^font=.*$", lambda m: line, text, count=1, flags=re.M))
+PY2
+    fi
+  fi
+  hyprctl reload >/dev/null 2>&1 || true
+  omarchy restart shell >/dev/null 2>&1 || true
+fi
+
+# ------------------------------------------------------------------- verify
+# Check the pieces the snapshot recorded once everything is restored. Every
+# failure only records a note and carries on; the only changes it makes are
+# `omarchy plugin enable maillander` and register-mailto.sh when their
+# conditions hold, plus the shell rescan/restart at the end.
+if want verify; then
+  say "Verify"
+  plugin_root=$HOME/.config/omarchy/plugins
+
+  # Symlinked plugin dirs must resolve, and every user plugin dir with a
+  # manifest must pass the validator (dangling links are the usual failure:
+  # the git checkout behind them moved).
+  for p in "$plugin_root"/*; do
+    [[ -e $p || -L $p ]] || continue
+    if [[ -L $p && ! -e $p ]]; then
+      note "plugin symlink dangling: $(basename "$p") -> $(readlink "$p")"
+      continue
+    fi
+    [[ -f $p/manifest.json ]] || continue
+    omarchy plugin validate "$p" >/dev/null 2>&1 || note "omarchy plugin validate $(basename "$p")"
+  done
+
+  # Every bar widget id must have a plugin dir, user or first-party.
+  shell_json=$HOME/.config/omarchy/shell.json
+  if [[ -r $shell_json ]]; then
+    while read -r wid; do
+      [[ -n $wid ]] || continue
+      [[ -d $plugin_root/$wid || -d /usr/share/omarchy/shell/plugins/$wid ]] || note "bar widget '$wid' has no plugin dir"
+    done < <(python3 -c 'import json, sys
+try: layout = json.load(open(sys.argv[1])).get("bar", {}).get("layout", {}) or {}
+except Exception: layout = {}
+for side in layout.values():
+    for e in side if isinstance(side, list) else []:
+        if isinstance(e, dict) and e.get("id"): print(e["id"])' "$shell_json" 2>/dev/null)
+  fi
+
+  # MailLander: enable the plugin, then make sure mailto points at it.
+  ml_dir=$plugin_root/maillander
+  if [[ -d $ml_dir ]]; then
+    omarchy plugin list 2>/dev/null | grep -E '^maillander[[:space:]]' | grep -qw enabled \
+      || { echo "   enabling maillander"; omarchy plugin enable maillander >/dev/null 2>&1 || note "omarchy plugin enable maillander"; }
+  fi
+  current_mailto=$(xdg-mime query default x-scheme-handler/mailto 2>/dev/null || true)
+  if [[ -f $src/system/mailto-handler.txt ]]; then
+    want_mailto=$(<"$src/system/mailto-handler.txt")
+    [[ -n $want_mailto && $current_mailto != "$want_mailto" ]] && note "mailto handler is '${current_mailto:-none}', snapshot had '$want_mailto'"
+  fi
+  if [[ $current_mailto == maillander.desktop && -d $ml_dir && -x $ml_dir/scripts/register-mailto.sh ]]; then
+    "$ml_dir/scripts/register-mailto.sh" "$ml_dir" --claim-default >/dev/null 2>&1 || note "register-mailto.sh --claim-default"
+  fi
+
+  # Icon-theme links (both maillander icons) must resolve.
+  if [[ -d $HOME/.local/share/icons/hicolor ]]; then
+    while read -r link; do
+      [[ -n $link ]] || continue
+      note "dangling icon symlink: ${link#"$HOME"/}"
+    done < <(find "$HOME/.local/share/icons/hicolor" -xtype l 2>/dev/null)
+  fi
+
+  # Agents collectors: present, executable and syntactically valid.
+  for tool in claude-usage-accounts opencode-usage; do
+    path=$HOME/.local/bin/$tool
+    if [[ ! -e $path ]]; then note "$tool is missing ($path)"
+    elif [[ ! -x $path ]]; then note "$tool is not executable"
+    else python3 -m py_compile "$path" >/dev/null 2>&1 || note "python3 -m py_compile $tool"; fi
+  done
+
+  # Credentials and tokens the agents widget reads; contents are never read.
+  [[ -e $HOME/.local/share/opencode/auth.json ]] || note "opencode auth missing (run: opencode auth login, pick OpenCode Go)"
+  [[ -e $HOME/.local/state/omarchy/agents/opencode-console.json ]] || note "opencode Zen token missing (run: opencode-usage --login)"
+
+  # MailLander's mailbox passwords live in the GNOME keyring.
+  if command -v secret-tool >/dev/null 2>&1; then
+    # `search` exits 0 whether or not it matched; a match is only visible as
+    # output (the attributes go to stderr), so that is what is tested.
+    [[ -n $(secret-tool search --all service maillander 2>&1) ]] || note "no maillander keyring entry (add the mailboxes again in MailLander)"
+  else
+    note "secret-tool not found (install libsecret)"
+  fi
+
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  omarchy restart shell >/dev/null 2>&1 || true
+fi
+
+# -------------------------------------------------------------------- lerd
+if want lerd && [[ -r $src/lerd-databases/index.tsv ]]; then
+  say "Lerd databases"
+  if ! command -v lerd >/dev/null; then echo "   lerd not installed, skipping"
+  elif ! lerd status >/dev/null 2>&1; then echo "   Lerd is not set up. Run 'lerd install', then: try-omarchy --restore --only lerd $src"
+  else
+    while IFS=$'\t' read -r site path; do
+      [[ -n $site ]] || continue
+      dump="$src/lerd-databases/${site//\//_}.sql"
+      if [[ -d $path && -s $dump ]]; then (cd "$path" && lerd db:import --fresh --no-pull "$dump") || note "lerd import $site"; else note "lerd $site (site dir or dump missing)"; fi
+    done <"$src/lerd-databases/index.tsv"
+  fi
+fi
+
+# -------------------------------------------------------------------- todo
+if want todo; then
+  say "Manual steps (need a human)"
+  cat <<'TXT'
+   1. Log out and back in so Hyprland, the shell, zsh and the restored groups take effect.
+   2. 1Password app: sign in, then Settings > Developer > "Integrate with 1Password CLI"
+      (and "Use the SSH agent"). Check with `op vault list`.
+   3. Secrets: `secrets-sync` writes ~/.npmrc from 1Password; `oprun <cmd>` resolves API keys.
+   4. Claude Code: `ccdb` uses the restored ~/.claude; run `ccmm` then `/login` for the MM account.
+   5. Tailscale: `sudo tailscale up`. GitHub: `gh auth status` (credentials were in the home archive).
+   6. Browsers, Slack, Signal, Telegram, MailLander: profiles were restored; re-enter anything
+      that is device-bound (Signal relink, 2FA prompts).
+   7. QMK: plug the keyboard in and run `qmk doctor`.
+   8. If the theme step asked for a password (browser colour policy) and you dismissed it, rerun
+      `omarchy theme set <theme>` once.
+   9. MailLander: the keyring unlocks with your login password. If the mailboxes are missing,
+      add them on MailLander's setup page (the IMAP app passwords are in 1Password).
+  10. Agents widget: if opencode's Zen credit is missing, run `opencode-usage --login`; the
+      Claude accounts come from `ccdb`/`ccmm` then `/login` (item 4).
+TXT
+fi
+
+if ((${#failed[@]})); then
+  echo; echo "Items that need attention:"; printf '   - %s\n' "${failed[@]}"; exit 2
+fi
+echo; echo "Rebuild complete."
