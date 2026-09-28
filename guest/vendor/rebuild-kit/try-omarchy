@@ -1,0 +1,48 @@
+#!/bin/bash
+# omarchy:summary=Back up this Try Omarchy VM to the Mac share and restore it in a fresh one
+#
+#   try-omarchy --backup  [OPTIONS]   (see try-omarchy --backup --help)
+#   try-omarchy --restore [OPTIONS]
+#   try-omarchy --repack  [OPTIONS]
+#
+# Each --FLAG runs the script of the same name in try-omarchy.d/ next to this
+# file (or /usr/lib/try-omarchy-rebuild-kit when installed as a package) and
+# hands it the remaining arguments. The list below is built from the
+# `# omarchy:summary=` line of each script, so a new script in try-omarchy.d/
+# becomes a new flag without touching this file.
+set -euo pipefail
+
+self=$(readlink -f "$0")
+libdir=""
+for d in "$(dirname "$self")/try-omarchy.d" /usr/lib/try-omarchy-rebuild-kit; do
+  [[ -d $d ]] && { libdir=$d; break; }
+done
+[[ -n $libdir ]] || { echo "try-omarchy: no try-omarchy.d directory next to $self" >&2; exit 1; }
+
+# Workflow order first, then anything else found in the directory.
+commands=()
+for c in backup restore repack; do [[ -x $libdir/$c ]] && commands+=("$c"); done
+for f in "$libdir"/*; do
+  c=$(basename "$f")
+  [[ -f $f && -x $f && " ${commands[*]} " != *" $c "* ]] && commands+=("$c")
+done
+
+list() {
+  printf '\033[1mtry-omarchy\033[0m: back up this VM to the Mac share and restore it in a fresh one\n\n'
+  local width=0 c summary
+  for c in "${commands[@]}"; do (( ${#c} + 2 > width )) && width=$(( ${#c} + 2 )); done
+  for c in "${commands[@]}"; do
+    summary=$(sed -n 's/^# omarchy:summary=//p' "$libdir/$c" | head -1)
+    printf '  \033[1m--%-*s\033[0m  %s\n' "$width" "$c" "${summary:-(no description)}"
+  done
+  printf '\nUsage: try-omarchy --COMMAND [OPTIONS]. Add --help after a command for its options.\n'
+}
+
+case "${1:-}" in
+  ""|-h|--help) list ;;
+  --*)
+    cmd=${1#--}; shift
+    if [[ " ${commands[*]} " == *" $cmd "* ]]; then exec "$libdir/$cmd" "$@"; fi
+    echo "try-omarchy: unknown command --$cmd" >&2; echo >&2; list >&2; exit 1 ;;
+  *) echo "try-omarchy: commands are flags, e.g. try-omarchy --backup" >&2; echo >&2; list >&2; exit 1 ;;
+esac

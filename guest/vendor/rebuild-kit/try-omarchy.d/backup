@@ -1,0 +1,273 @@
+#!/bin/bash
+# omarchy:summary=Snapshot everything added since the factory image (packages, home, system, Lerd DBs) to the Mac share
+# try-omarchy --backup — capture everything added to this Try Omarchy VM since the
+# factory image, so try-omarchy --restore can recreate it in a fresh VM.
+#
+#   try-omarchy --backup [--no-home] [--no-aur-files] [DESTINATION_DIR]
+#
+# Default destination: /mnt/mac/omarchy-rebuild/snapshot (the Mac share, so the
+# snapshot outlives the VM). Everything is written into that one directory:
+#
+#   manifest.json          when, where, theme, font, versions
+#   inventory.md           human-readable summary of what was captured
+#   packages-repo.txt      explicitly installed repo packages beyond the factory image
+#   packages-aur.txt       foreign (AUR / locally built) packages
+#   aur-packages/          the built .pkg.tar.* files for those, when found on disk
+#   pkgbuilds/             PKGBUILD trees from ~/Projects/Linux for packages built by hand
+#   flatpaks.txt           app id, origin, installation (user/system)
+#   flatpak-overrides/     per-app overrides (the fontconfig fix lives here)
+#   system/                enabled services, unowned udev rules, groups, shell,
+#                          default browser and mailto handler
+#   home.tar.zst           $HOME minus caches, package stores and rebuildable trees
+#   lerd-databases/        SQL dumps of every registered Lerd site (if Lerd is set up)
+#
+# The stock try-omarchy-backup is not called: its home archive keeps flatpak
+# and mise stores, qmk_firmware and browser caches, which are all rebuilt by
+# try-omarchy --restore from the lists above instead.
+set -euo pipefail
+
+usage() { sed -n '3,6p' "$0" | sed 's/^# \{0,1\}//'; }
+fail() { echo "try-omarchy --backup: $*" >&2; exit 1; }
+say()  { printf '\033[1m==> %s\033[0m\n' "$*"; }
+
+with_home=1; with_aur_files=1; dest=""
+while (($#)); do
+  case "$1" in
+    --no-home) with_home=0 ;;
+    --no-aur-files) with_aur_files=0 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) fail "unknown option: $1" ;;
+    *) [[ -z $dest ]] || fail "only one destination is accepted"; dest=$1 ;;
+  esac; shift
+done
+if [[ -z $dest ]]; then
+  mountpoint -q /mnt/mac || fail "the Mac share is not mounted; enable it in the Try Omarchy start menu or pass a destination"
+  dest=/mnt/mac/omarchy-rebuild/snapshot
+fi
+mkdir -p "$dest" || fail "cannot create $dest"
+dest=$(cd "$dest" && pwd -P)
+factory=/usr/share/try-omarchy/packages.lock.txt
+[[ -r $factory ]] || fail "factory package list not found: $factory"
+
+# ---------------------------------------------------------------- packages
+say "Packages"
+comm -23 <(pacman -Qqe | sort -u) <(awk '{print $1}' "$factory" | sort -u) >"$dest/packages-all.txt"
+pacman -Qqm | sort -u >"$dest/packages-aur.txt"
+comm -23 "$dest/packages-all.txt" "$dest/packages-aur.txt" >"$dest/packages-repo.txt"
+printf '  %s repo, %s foreign\n' "$(wc -l <"$dest/packages-repo.txt")" "$(wc -l <"$dest/packages-aur.txt")"
+
+# Built files for foreign packages, so the rebuild can `pacman -U` instead of
+# compiling again. Sources, in order: the previous snapshot (kept while the
+# installed version still matches), yay's cache, hand-built trees in ~/Projects/Linux,
+# and the Mac's Work folder on the share. When none has the file,
+# try-omarchy --repack (next to this script) rebuilds one from the installed
+# files and pacman's local database, so the snapshot never depends on a build
+# cache that a rebuilt VM does not have. (Until 2026-09-16 this block did
+# `rm -rf aur-packages` first and refilled it from yay's cache only; in the
+# rebuilt VM that cache was empty, so one snapshot run deleted the ten
+# prebuilt files. They were recovered by repacking.)
+mkdir -p "$dest/aur-packages"; rm -rf "$dest/pkgbuilds"; mkdir -p "$dest/pkgbuilds"
+: >"$dest/aur-sources.txt"
+repack="$(dirname "$(readlink -f "$0")")/repack"
+keep=()
+while read -r pkg; do
+  [[ -n $pkg ]] || continue
+  file=""
+  if [[ $with_aur_files == 1 && $pkg != ZenNotes ]]; then
+    ver=$(pacman -Q "$pkg" 2>/dev/null | awk '{ print $2 }')
+    file=$(find "$dest/aur-packages" "$HOME/.cache/yay" "$HOME/Projects/Linux" /mnt/mac/Work -maxdepth 2 \
+             -name "${pkg}-${ver}-*.pkg.tar.*" -not -name '*.sig' 2>/dev/null | sort | head -1)
+    if [[ -z $file && -x $repack ]]; then
+      echo "  repacking $pkg $ver from the installed files"
+      file=$("$repack" -o "$dest/aur-packages" "$pkg" 2>/dev/null) || file=""
+    fi
+  fi
+  case "$pkg" in
+    ZenNotes) printf '%s\tgithub:ZenNotes/zennotes\n' "$pkg" >>"$dest/aur-sources.txt" ;;
+    *) if [[ -n $file ]]; then
+         [[ $(dirname "$file") == "$dest/aur-packages" ]] || cp -n "$file" "$dest/aur-packages/"
+         keep+=("$(basename "$file")")
+         printf '%s\tfile:%s\n' "$pkg" "$(basename "$file")" >>"$dest/aur-sources.txt"
+       else printf '%s\taur\n' "$pkg" >>"$dest/aur-sources.txt"; fi ;;
+  esac
+done <"$dest/packages-aur.txt"
+# Drop files whose package is gone or now installed at another version.
+if [[ $with_aur_files == 1 ]]; then
+  for f in "$dest/aur-packages"/*; do
+    [[ -e $f ]] || continue
+    printf '%s\n' ${keep[@]+"${keep[@]}"} | grep -qxF -- "$(basename "$f")" || rm -f "$f"
+  done
+fi
+for tree in "$HOME"/Projects/Linux/*/; do
+  [[ -f $tree/PKGBUILD ]] || continue
+  name=$(basename "$tree"); mkdir -p "$dest/pkgbuilds/$name"
+  find "$tree" -maxdepth 1 -type f -not -name '*.pkg.tar.*' -not -name '*.tar.*' -not -name '*.zip' -not -name '*.deb' -exec cp -t "$dest/pkgbuilds/$name/" {} +
+done
+printf '  %s built package files, %s PKGBUILD trees\n' "$(ls "$dest/aur-packages" | wc -l)" "$(ls "$dest/pkgbuilds" | wc -l)"
+
+# ---------------------------------------------------------------- flatpaks
+say "Flatpaks"
+flatpak list --app --columns=application,origin,installation 2>/dev/null >"$dest/flatpaks.txt" || : >"$dest/flatpaks.txt"
+flatpak remotes --columns=name,url,options 2>/dev/null >"$dest/flatpak-remotes.txt" || :
+rm -rf "$dest/flatpak-overrides"; mkdir -p "$dest/flatpak-overrides"
+[[ -d $HOME/.local/share/flatpak/overrides ]] && cp -a "$HOME/.local/share/flatpak/overrides/." "$dest/flatpak-overrides/"
+printf '  %s apps, %s overrides\n' "$(wc -l <"$dest/flatpaks.txt")" "$(ls "$dest/flatpak-overrides" | wc -l)"
+
+# ------------------------------------------------------------------ system
+say "System"
+mkdir -p "$dest/system/udev"
+systemctl list-unit-files --state=enabled --no-legend 2>/dev/null | awk '{print $1}' | sort >"$dest/system/services-system.txt"
+systemctl --user list-unit-files --state=enabled --no-legend 2>/dev/null | awk '{print $1}' | sort >"$dest/system/services-user.txt"
+for rule in /etc/udev/rules.d/*.rules; do
+  [[ -f $rule ]] || continue
+  pacman -Qo "$rule" >/dev/null 2>&1 || cp "$rule" "$dest/system/udev/"
+done
+# Unowned executables in /usr/local/bin. Try Omarchy ships its own there
+# (omarchy-native-*, try-omarchy-*, xdg-terminal-exec ...); the rebuild only
+# installs the ones missing from the fresh VM, i.e. the hand-made wrappers
+# (ghostty software-GL wrapper, 1password).
+rm -rf "$dest/system/usr-local-bin"; mkdir -p "$dest/system/usr-local-bin"
+for f in /usr/local/bin/*; do
+  [[ -f $f ]] || continue
+  pacman -Qo "$f" >/dev/null 2>&1 || cp -p "$f" "$dest/system/usr-local-bin/"
+done
+id -nG >"$dest/system/groups.txt"
+getent passwd "$USER" | cut -d: -f7 >"$dest/system/shell.txt"
+xdg-settings get default-web-browser >"$dest/system/default-browser.txt" 2>/dev/null || :
+xdg-mime query default x-scheme-handler/mailto >"$dest/system/mailto-handler.txt" 2>/dev/null || :
+printf '  %s unowned udev rules, %s unowned /usr/local/bin files\n' "$(ls "$dest/system/udev" | wc -l)" "$(ls "$dest/system/usr-local-bin" | wc -l)"
+
+# -------------------------------------------------------------------- home
+if (( with_home )); then
+  say "Home directory"
+  tar --zstd -cf "$dest/home.tar.zst" -C "$HOME" \
+    --exclude=./.cache --exclude=./.local/share/Trash --exclude-caches-all \
+    --exclude=./.npm --exclude=./.cargo/registry \
+    --exclude=./.local/share/containers \
+    --exclude=./.local/share/flatpak --exclude=./.local/share/mise --exclude=./.local/share/fnm \
+    --exclude=./.local/share/qmk-venv --exclude=./qmk_firmware \
+    --exclude=./.local/share/nvim/lazy \
+    --exclude='./.config/*/Cache' --exclude='./.config/*/Code Cache' --exclude='./.config/*/GPUCache' \
+    --exclude='./.config/*/CachedData' --exclude='./.config/*/Service Worker' --exclude='./.config/*/DawnGraphiteCache' --exclude='./.config/*/DawnWebGPUCache' \
+    --exclude='./.var/app/*/cache' \
+    --exclude='./Projects/Linux/*/src' --exclude='./Projects/Linux/*/pkg' --exclude='./Projects/Linux/*/*.pkg.tar.*' \
+    --exclude='*/node_modules' \
+    . || fail "home archive failed"
+  printf '  %s\n' "$(du -h "$dest/home.tar.zst" | cut -f1)"
+fi
+
+# -------------------------------------------------------------------- lerd
+lerd_registry="$HOME/.local/share/lerd/sites.yaml"
+if command -v lerd >/dev/null 2>&1 && [[ -r $lerd_registry ]]; then
+  say "Lerd databases"
+  mkdir -p "$dest/lerd-databases"; : >"$dest/lerd-databases/index.tsv"
+  while IFS=$'\t' read -r site path; do
+    [[ -n $site && -d $path ]] || continue
+    dump="$dest/lerd-databases/${site//\//_}.sql"
+    if (cd "$path" && lerd db:export --no-pull -o "$dump" >/dev/null 2>&1) && [[ -s $dump ]]; then
+      printf '%s\t%s\n' "$site" "$path" >>"$dest/lerd-databases/index.tsv"
+    else rm -f -- "$dump"; fi
+  done < <(python3 -c 'import sys,yaml
+for s in (yaml.safe_load(open(sys.argv[1])) or {}).get("sites") or []:
+    if isinstance(s,dict) and s.get("name") and s.get("path"): print(f"{s[\"name\"]}\t{s[\"path\"]}")' "$lerd_registry")
+  printf '  %s site database(s)\n' "$(wc -l <"$dest/lerd-databases/index.tsv")"
+fi
+
+# ---------------------------------------------------------- manifest + inventory
+say "Manifest"
+python3 - "$dest" <<'PY'
+import datetime, json, os, socket, subprocess, sys, glob
+dest = sys.argv[1]; home = os.path.expanduser("~")
+def run(*a):
+    try: return subprocess.run(a, capture_output=True, text=True, timeout=30).stdout.strip()
+    except Exception: return ""
+def lines(p):
+    try: return [l for l in open(p).read().splitlines() if l.strip()]
+    except Exception: return []
+theme = run("omarchy", "theme", "current"); font = run("omarchy", "font", "current")
+plugins = sorted(os.path.basename(p) for p in glob.glob(f"{home}/.config/omarchy/plugins/*"))
+themes = sorted(os.path.basename(p) for p in glob.glob(f"{home}/.config/omarchy/themes/*"))
+def read(p):
+    try: return open(p, errors="ignore").read()
+    except OSError: return ""  # dangling .desktop symlinks from removed apps
+webapps = sorted(os.path.basename(p)[:-8] for p in glob.glob(f"{home}/.local/share/applications/*.desktop") if "omarchy-launch-webapp" in read(p))
+bins = sorted(os.path.basename(p) for p in glob.glob(f"{home}/.local/bin/*"))
+
+# Symlinked plugins, icons and the bar layout. Only link targets and widget ids
+# are recorded, never the contents of linked files.
+def link_target(p):
+    t = os.path.realpath(p)
+    if t == home: return "~"
+    if t.startswith(home + os.sep): return "~/" + t[len(home) + 1:]
+    return t
+plugin_links = {}
+for p in sorted(glob.glob(f"{home}/.config/omarchy/plugins/*")):
+    if os.path.islink(p): plugin_links[os.path.basename(p)] = link_target(p)
+icon_links = {}
+hicolor = f"{home}/.local/share/icons/hicolor"
+for p in sorted(glob.glob(f"{hicolor}/**/*", recursive=True)):
+    if os.path.islink(p): icon_links[os.path.relpath(p, hicolor)] = link_target(p)
+bar_layout = []
+bar_widgets = []
+try:
+    layout = json.load(open(f"{home}/.config/omarchy/shell.json")).get("bar", {}).get("layout", {}) or {}
+except Exception:
+    layout = {}
+sides = [s for s in ("left", "center", "right") if s in layout] + [s for s in layout if s not in ("left", "center", "right")]
+for side in sides:
+    entries = layout.get(side)
+    if not isinstance(entries, list): continue
+    ids = [e.get("id") for e in entries if isinstance(e, dict) and e.get("id")]
+    if ids: bar_layout.append((side, ids)); bar_widgets.extend(ids)
+agents_root = f"{home}/.local/state/omarchy/agents"
+agents_state = sorted(os.path.basename(p) for p in glob.glob(f"{agents_root}/accounts/*.json"))
+if os.path.exists(f"{agents_root}/opencode-console.json"): agents_state.append("opencode-console.json")
+agents_state = sorted(set(agents_state))
+git_checkouts = []
+for d in sorted(glob.glob(f"{home}/Projects/Linux/*/.git")):
+    repo = os.path.dirname(d)
+    git_checkouts.append({"dir": os.path.basename(repo),
+                          "branch": run("git", "-C", repo, "rev-parse", "--abbrev-ref", "HEAD"),
+                          "head": run("git", "-C", repo, "rev-parse", "--short", "HEAD"),
+                          "remote": run("git", "-C", repo, "remote", "get-url", "origin")})
+mailto_handler = run("xdg-mime", "query", "default", "x-scheme-handler/mailto")
+m = {"schemaVersion": 1, "createdAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+     "hostname": socket.gethostname(), "user": os.environ.get("USER", ""), "arch": run("uname", "-m"),
+     "tryOmarchyRuntime": run("pacman", "-Q", "try-omarchy-runtime"), "omarchy": run("omarchy", "version"),
+     "theme": theme, "font": font, "plugins": plugins, "themes": themes, "webapps": webapps,
+     "pluginLinks": plugin_links, "iconLinks": icon_links, "barWidgets": bar_widgets,
+     "mailtoHandler": mailto_handler, "agentsState": agents_state, "gitCheckouts": git_checkouts,
+     "flatpaks": [l.split("\t")[0] for l in lines(f"{dest}/flatpaks.txt")],
+     "packagesRepo": lines(f"{dest}/packages-repo.txt"), "packagesAur": lines(f"{dest}/packages-aur.txt"),
+     "hasHome": os.path.exists(f"{dest}/home.tar.zst")}
+json.dump(m, open(f"{dest}/manifest.json", "w"), indent=2)
+inv = [f"# Snapshot of {m['hostname']} — {m['createdAt']}", "",
+       f"Try Omarchy runtime: {m['tryOmarchyRuntime']} · Omarchy {m['omarchy']} · {m['arch']}",
+       f"Theme: {theme} · Font: {font}", "",
+       "## Repo packages beyond the factory image", ", ".join(m["packagesRepo"]) or "(none)", "",
+       "## Foreign packages (AUR / built locally)", "", "| package | source |", "|---|---|"]
+for l in lines(f"{dest}/aur-sources.txt"):
+    p, s = l.split("\t", 1); inv.append(f"| {p} | {s} |")
+inv += ["", "## Flatpaks", *(f"- {l.replace(chr(9), ' · ')}" for l in lines(f"{dest}/flatpaks.txt")), "",
+        "## Web apps", ", ".join(webapps) or "(none)", "",
+        "## Shell plugins", ", ".join(plugins) or "(none)", ""]
+inv += ["## Plugin symlinks"]
+inv += [f"- {n} -> {t}" for n, t in plugin_links.items()] or ["(none)"]
+inv += ["", "## Icon theme links"]
+inv += [f"- {n} -> {t}" for n, t in icon_links.items()] or ["(none)"]
+inv += ["", "## Bar widgets"]
+if bar_layout:
+    for side, ids in bar_layout: inv.append(f"- {side}: " + ", ".join(ids))
+else: inv.append("(none)")
+inv += ["", "## Mailto handler", mailto_handler or "(none)", ""]
+inv += ["## Agents state (names only)", ", ".join(agents_state) or "(none)", ""]
+inv += ["## Git checkouts"]
+inv += [f"- {g['dir']}: {g['branch']} @ {g['head']} ({g['remote']})" for g in git_checkouts] or ["(none)"]
+inv += ["", "## User themes", ", ".join(themes) or "(none)", "",
+        "## ~/.local/bin", ", ".join(bins) or "(none)", "",
+        "## Enabled system services", ", ".join(lines(f"{dest}/system/services-system.txt")), "",
+        "## Unowned udev rules", ", ".join(sorted(os.listdir(f"{dest}/system/udev"))) or "(none)", ""]
+open(f"{dest}/inventory.md", "w").write("\n".join(inv))
+PY
+echo "Snapshot complete: $dest"
+echo "In a fresh VM: try-omarchy --restore $dest"

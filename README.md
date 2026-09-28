@@ -683,6 +683,23 @@ sources by `omarchy-pkg-resolve-aarch64-sources` inside the guest:
 Edge, Spotify, Steam, LM Studio, and Heroic stay unavailable: no arm64 Linux
 builds exist.
 
+## Rebuild kit
+
+Every image already ships the user's own backup/restore kit as the pacman
+package `try-omarchy-rebuild-kit`, so a fresh VM has `try-omarchy --backup`,
+`try-omarchy --restore`, and `try-omarchy --repack` on `PATH` from first boot
+instead of depending on the shared Mac folder. The commands install to
+`/usr/bin/try-omarchy` with their subcommands in
+`/usr/lib/try-omarchy-rebuild-kit`; the live copies on the Mac share still win
+through the `~/.local/bin` symlinks a restore creates, so the newest kit runs.
+
+Refresh the vendored copy after editing the live kit with
+`guest/scripts/import-rebuild-kit.sh` (it rewrites the pinned digests and the
+date version in `guest/spec.json`), then rebuild the image. Because the kit is
+a pacman-owned package, its own snapshot skips it, and it appears in
+`/usr/share/try-omarchy/packages.lock.txt`, so `try-omarchy --backup` does not
+count it as a user-added package.
+
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)

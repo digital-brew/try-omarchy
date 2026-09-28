@@ -21,6 +21,7 @@ from pathlib import Path
 
 GUEST = Path(__file__).resolve().parents[1]
 REPO = GUEST.parent
+ROOT = GUEST.parent
 DEFAULT_WALLPAPER = (
     GUEST
     / "native-overlay/etc/skel/.config/omarchy/backgrounds/tokyo-night/try-omarchy-wallpaper.jpg"
@@ -728,6 +729,63 @@ def main() -> None:
         and lerd["binarySha256"] in launcher,
         "native launcher accepts only the reviewed official Lerd ARM64 release",
     )
+    rebuild_kit = spec.get("supplyChain", {}).get("rebuildKit", {})
+    check(
+        rebuild_kit
+        == {
+            "version": "2026.09.28",
+            "pkgrel": "1",
+            "source": "vendor/rebuild-kit",
+            "license": "custom:personal",
+            "files": {
+                "README.md": "0832d2dffd7318f7b08072a72b09efeabf4241ccfad54d85aab3e29156caeca6",
+                "try-omarchy": "829809841edc445c97057c9c49dfc185f847f832acf555c21bacfeae6bc542f6",
+                "try-omarchy.d/backup": "28b98f4abcefaf48e12a897936ecac61fcbc84a15f4990a80380a5e2012c9b39",
+                "try-omarchy.d/repack": "05797e5768652ee00a6f069001914a4a66a182b79a0633198a5afb23bcff47e8",
+                "try-omarchy.d/restore": "b96a047cf8b763b0b4b5a5166664c583b0e576e54a88459d42d35e782a3b660e",
+            },
+        },
+        "vendored Try Omarchy backup/restore kit is fully pinned",
+    )
+    vendored_kit = GUEST / rebuild_kit["source"]
+    rebuild_kit_modes = {
+        "README.md": 0o644,
+        "try-omarchy": 0o755,
+        "try-omarchy.d/backup": 0o755,
+        "try-omarchy.d/repack": 0o755,
+        "try-omarchy.d/restore": 0o755,
+    }
+    rebuild_kit_files_ok = True
+    for relative, mode in rebuild_kit_modes.items():
+        path = vendored_kit / relative
+        rebuild_kit_files_ok = (
+            rebuild_kit_files_ok
+            and path.is_file()
+            and not path.is_symlink()
+            and hashlib.sha256(path.read_bytes()).hexdigest()
+            == rebuild_kit["files"][relative]
+            and stat.S_IMODE(path.stat().st_mode) == mode
+        )
+    check(
+        rebuild_kit_files_ok,
+        "vendored rebuild kit files match their pinned digests and modes",
+    )
+    register_rebuild_kit_path = GUEST / "scripts/register-rebuild-kit.sh"
+    register_rebuild_kit = read(register_rebuild_kit_path)
+    check(
+        register_rebuild_kit_path.is_file()
+        and register_rebuild_kit_path.stat().st_mode & stat.S_IXUSR != 0
+        and "try-omarchy-rebuild-kit" in register_rebuild_kit
+        and "usr/lib/try-omarchy-rebuild-kit" in register_rebuild_kit
+        and "arch = any" in register_rebuild_kit,
+        "guest packages the vendored rebuild kit as an any-architecture package",
+    )
+    check(
+        'supply_chain.get("rebuildKit")' in launcher
+        and '"build spec rebuild kit component"' in launcher
+        and rebuild_kit["files"]["try-omarchy"] in launcher,
+        "native launcher accepts only the vendored Try Omarchy rebuild kit",
+    )
     voxtype_identity = hashlib.sha256(
         json.dumps(
             voxtype,
@@ -996,10 +1054,11 @@ def main() -> None:
         "pacman recovery files snapshot the final local-repository configuration",
     )
     check(
-        "expected_archive_count=8" in local_repository
+        "expected_archive_count=9" in local_repository
         and "factory repository is missing pinned ttfx" in local_repository
         and "factory repository is missing pinned yay" in local_repository
         and "factory repository is missing pinned lerd" in local_repository
+        and "try-omarchy-rebuild-kit-" in local_repository
         and "factory repository is missing patched Hyprland" in local_repository
         and "factory repository is missing pinned Voxtype" in local_repository
         and "factory repository is missing the battery DKMS module" in local_repository
@@ -1208,6 +1267,13 @@ def main() -> None:
         and 'arch-chroot "$root" /usr/bin/lerd --version' in register_lerd,
         "guest installs verified lerd before sealing its local repository",
     )
+    check(
+        "register-rebuild-kit.sh" in build
+        and build.index("register-pinned-lerd.sh")
+        < build.index("register-rebuild-kit.sh")
+        < build.index("register-local-repository.sh"),
+        "guest installs the packaged rebuild kit before sealing its local repository",
+    )
     register_ttfx = read(GUEST / "scripts/register-pinned-ttfx.sh")
     check(
         "register-pinned-ttfx.sh" in build
@@ -1383,6 +1449,12 @@ def main() -> None:
         "Pinned lerd identity mismatch" in finalizer
         and "Missing pinned ARM64 lerd" in finalizer,
         "finalizer requires the pinned official Lerd binary identity",
+    )
+    check(
+        "Missing rebuild kit" in finalizer
+        and "Rebuild kit is not pacman-owned" in finalizer
+        and "pacman -Qq try-omarchy-rebuild-kit" in finalizer,
+        "finalizer requires the pacman-owned rebuild kit on the image",
     )
     check(
         "pacman -Q hyprland" in finalizer

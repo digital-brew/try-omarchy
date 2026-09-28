@@ -128,6 +128,19 @@
       "licenseUrl": "https://raw.githubusercontent.com/lerd-env/lerd/v1.35.0/LICENSE",
       "licenseSha256": "eeeb22e0f4308d71cfbce833f57f7615f3a07c4c875ade83ef593d3337d41ab1"
     },
+    "rebuildKit": {
+      "version": "2026.09.28",
+      "pkgrel": "1",
+      "source": "vendor/rebuild-kit",
+      "license": "custom:personal",
+      "files": {
+        "README.md": "0832d2dffd7318f7b08072a72b09efeabf4241ccfad54d85aab3e29156caeca6",
+        "try-omarchy": "829809841edc445c97057c9c49dfc185f847f832acf555c21bacfeae6bc542f6",
+        "try-omarchy.d/backup": "28b98f4abcefaf48e12a897936ecac61fcbc84a15f4990a80380a5e2012c9b39",
+        "try-omarchy.d/repack": "05797e5768652ee00a6f069001914a4a66a182b79a0633198a5afb23bcff47e8",
+        "try-omarchy.d/restore": "b96a047cf8b763b0b4b5a5166664c583b0e576e54a88459d42d35e782a3b660e"
+      }
+    },
     "vivaldi": {
       "version": "8.2.4133.76",
       "rpmRelease": 1,

@@ -69,6 +69,8 @@ expected_ttfx=$(read_spec '["supplyChain"]["ttfx"]["reportedVersion"]')
 expected_lerd=$(read_spec '["supplyChain"]["lerd"]["reportedVersion"]')
 [[ -x /usr/bin/lerd ]] || { echo "Missing pinned ARM64 lerd" >&2; exit 1; }
 [[ $(/usr/bin/lerd --version) == "$expected_lerd" ]] || { echo "Pinned lerd identity mismatch" >&2; exit 1; }
+[[ -x /usr/bin/try-omarchy && -x /usr/lib/try-omarchy-rebuild-kit/backup && -x /usr/lib/try-omarchy-rebuild-kit/restore && -x /usr/lib/try-omarchy-rebuild-kit/repack ]] || { echo "Missing rebuild kit" >&2; exit 1; }
+pacman -Qq try-omarchy-rebuild-kit >/dev/null || { echo "Rebuild kit is not pacman-owned" >&2; exit 1; }
 expected_hyprland="$(read_spec '["supplyChain"]["hyprland"]["version"]')-$(read_spec '["supplyChain"]["hyprland"]["pkgrel"]')"
 [[ $(pacman -Q hyprland) == "hyprland $expected_hyprland" ]] || {
   echo "Rounded-border Hyprland backport is missing" >&2
