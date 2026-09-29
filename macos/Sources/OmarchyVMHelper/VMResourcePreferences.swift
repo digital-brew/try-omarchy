@@ -48,12 +48,18 @@ struct VMResourceLimits: Equatable {
 
     /// Resolve each value independently when a saved choice no longer fits
     /// this Mac. The stored choice is retained for a later move back.
+    ///
+    /// A saved choice from before the disk maximum existed carries no disk
+    /// value. Upstream keeps the factory capacity then; this fork applies its
+    /// 150 GiB default instead, so a new VM never lands on the 24 GiB factory
+    /// disk. Disks only ever grow, sparsely, so an existing larger disk is
+    /// unaffected and a smaller one is extended at the next launch.
     func resolve(_ saved: VMResources?) -> VMResources {
         guard let saved else { return defaults }
         return VMResources(
             cpuCount: cpuRange.contains(saved.cpuCount) ? saved.cpuCount : defaults.cpuCount,
             memoryGiB: memoryChoicesGiB.contains(saved.memoryGiB) ? saved.memoryGiB : defaults.memoryGiB,
-            diskGiB: saved.diskGiB.flatMap { (1...8192).contains($0) ? $0 : nil }
+            diskGiB: saved.diskGiB.flatMap { (1...8192).contains($0) ? $0 : nil } ?? defaults.diskGiB
         )
     }
 

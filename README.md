@@ -168,7 +168,9 @@ Keep the displayed value to retain the current capacity. Larger values sparsely
 extend the stopped disk at the next launch; the guest expands its root filesystem
 on boot. Existing disks cannot
 shrink. **Use Defaults** selects 150 GiB, or the existing capacity if larger.
-Previously saved settings without a disk maximum retain their current capacity.
+Previously saved settings without a disk maximum resolve to this fork's 150 GiB
+default (upstream would keep the current capacity); the disk grows sparsely at
+the next launch.
 A disk previously grown with the CLI remains at least that large. For direct launcher script usage,
 set `OMARCHY_QEMU_GPU_DISK_GIB=256`.
 
