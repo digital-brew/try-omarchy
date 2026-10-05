@@ -52,9 +52,9 @@ struct VMResourcePreferencesTests {
     func smallerHost() {
         let small = limits(cpus: 8, memoryGiB: 16)
         #expect(small.resolve(VMResources(cpuCount: 18, memoryGiB: 12))
-            == VMResources(cpuCount: 8, memoryGiB: 12))
+            == VMResources(cpuCount: 8, memoryGiB: 12, diskGiB: 150))
         #expect(small.resolve(VMResources(cpuCount: 6, memoryGiB: 44))
-            == VMResources(cpuCount: 6, memoryGiB: 12))
+            == VMResources(cpuCount: 6, memoryGiB: 12, diskGiB: 150))
         #expect(small.resolve(VMResources(cpuCount: -1, memoryGiB: Int.max)) == small.defaults)
     }
 
@@ -67,7 +67,7 @@ struct VMResourcePreferencesTests {
         let reopened = VMResourcePreferenceStore(defaults: fixture.defaults)
         #expect(reopened.load() == choice)
         #expect(limits(cpus: 8, memoryGiB: 8).resolve(reopened.load())
-            == VMResources(cpuCount: 8, memoryGiB: 4))
+            == VMResources(cpuCount: 8, memoryGiB: 4, diskGiB: 150))
         #expect(reopened.load() == choice)
     }
 
@@ -102,6 +102,7 @@ struct VMResourcePreferencesTests {
             "KEEP_ME": "yes",
             "OMARCHY_QEMU_GPU_CPUS": "18",
             "OMARCHY_QEMU_GPU_MEMORY_MIB": "12288",
+            "OMARCHY_QEMU_GPU_DISK_GIB": "150",
         ])
         let resolved = VMResourceLaunchConfiguration.make(
             baseEnvironment: [:],
@@ -119,7 +120,7 @@ struct VMResourcePreferencesTests {
         memoryStore.save(MemoryPreferences(memoryMiB: 12288))
         #expect(fixture.store.load() == VMResources(cpuCount: 8, memoryGiB: 12))
         #expect(limits(cpus: 6, memoryGiB: 8).resolve(fixture.store.load())
-            == VMResources(cpuCount: 6, memoryGiB: 4))
+            == VMResources(cpuCount: 6, memoryGiB: 4, diskGiB: 150))
         #expect(memoryStore.load().memoryMiB == 12288)
         #expect(fixture.defaults.object(forKey: VMResourcePreferenceStore.key) == nil)
         fixture.store.save(VMResources(cpuCount: 18, memoryGiB: 8))
@@ -136,7 +137,7 @@ struct VMResourcePreferencesTests {
         }
     }
 
-    @Test("Old resource preferences preserve CPU and RAM without selecting disk growth")
+    @Test("Old resource preferences preserve CPU and RAM and take the 150 GiB disk default")
     func migratesDiskPreference() throws {
         let fixture = DefaultsFixture()
         fixture.defaults.set(Data(#"{"schemaVersion":1,"resources":{"cpuCount":6,"memoryGiB":12}}"#.utf8),
@@ -148,7 +149,7 @@ struct VMResourcePreferencesTests {
         let environment = VMResourceLaunchConfiguration.make(baseEnvironment: [:], preferences: selected, limits: limits()).environment
         #expect(environment[VMResourceLaunchConfiguration.diskEnvironmentKey] == "256")
         let defaults = VMResourceLaunchConfiguration.make(baseEnvironment: environment, preferences: nil, limits: limits()).environment
-        #expect(defaults[VMResourceLaunchConfiguration.diskEnvironmentKey] == "64")
+        #expect(defaults[VMResourceLaunchConfiguration.diskEnvironmentKey] == "150")
     }
 
     @Test("Disk maximum accepts growth and rejects shrinking, malformed and excessive values")
