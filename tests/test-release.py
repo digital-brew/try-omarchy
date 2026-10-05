@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -19,6 +20,13 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 
 class ReleaseTests(unittest.TestCase):
     def setUp(self) -> None:
+        # A developer's global git config (tag.sort, signing, URL rewrites)
+        # must not leak into the fixture repository or the release script.
+        environment = mock.patch.dict(
+            os.environ, {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
+        )
+        environment.start()
+        self.addCleanup(environment.stop)
         self.temporary = tempfile.TemporaryDirectory(prefix="release-test-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
