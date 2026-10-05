@@ -31,7 +31,7 @@ struct VMResourceEditorTests {
         #expect(save.isEnabled)
         save.performClick(nil)
         editor.dismiss()
-        #expect(saved == [VMResources(cpuCount: 18, memoryGiB: 12, diskGiB: 64)])
+        #expect(saved == [VMResources(cpuCount: 18, memoryGiB: 12, diskGiB: 150)])
         #expect(closed == 1)
     }
 
@@ -108,7 +108,7 @@ struct VMResourceEditorTests {
         memory.selectItem(withTag: 12)
         memory.sendAction(memory.action, to: memory.target)
         save.performClick(nil)
-        #expect(saved == VMResources(cpuCount: 8, memoryGiB: 12, diskGiB: 64))
+        #expect(saved == VMResources(cpuCount: 8, memoryGiB: 12, diskGiB: 150))
     }
 
     @Test("A small host retains a usable default memory choice")
@@ -137,7 +137,7 @@ struct VMResourceEditorTests {
         defer { editor.dismiss() }
         let disk: NSTextField = try control("disk", in: editor)
         let save: NSButton = try control("save", in: editor)
-        #expect(disk.stringValue == "64")
+        #expect(disk.stringValue == "150")
         disk.stringValue = ""
         editor.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: disk))
         #expect(!save.isEnabled)
@@ -152,7 +152,9 @@ struct VMResourceEditorTests {
         #expect(saved?.diskGiB == 256)
     }
 
-    @Test("Older settings show the current capacity and unchanged Save preserves it", arguments: [16, 256])
+    /// Older settings carry no disk maximum, so they take this fork's 150 GiB
+    /// default; a disk already larger than that keeps its current capacity.
+    @Test("Older settings grow a small disk to the default and preserve a larger one", arguments: [16, 256])
     func currentDiskCapacity(capacity: Int) throws {
         _ = NSApplication.shared
         var saved: VMResources?
@@ -163,10 +165,10 @@ struct VMResourceEditorTests {
         defer { editor.dismiss() }
         let disk: NSTextField = try control("disk", in: editor)
         let save: NSButton = try control("save", in: editor)
-        #expect(disk.stringValue == String(capacity))
+        #expect(disk.stringValue == String(max(capacity, 150)))
         #expect(save.isEnabled)
         save.performClick(nil)
-        #expect(saved?.diskGiB == capacity)
+        #expect(saved?.diskGiB == max(capacity, 150))
     }
 
     private func control<T: NSView>(_ name: String, in editor: VMResourceEditor) throws -> T {
