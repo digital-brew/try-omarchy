@@ -80,6 +80,7 @@ hda_no_catch_up_patch="$native_dir/patches/qemu-hda-no-catch-up.patch"
 audio_capture_thread_patch="$native_dir/patches/qemu-sdl-audio-capture-thread.patch"
 audio_playback_thread_patch="$native_dir/patches/qemu-sdl-audio-playback-thread.patch"
 main_loop_qos_patch="$native_dir/patches/qemu-darwin-main-loop-qos.patch"
+gpu_mapping_patch="$native_dir/patches/qemu-virtio-gpu-mapping-entries.patch"
 slirp_patch="$native_dir/patches/libslirp-darwin-icmp-matching.patch"
 udp_patch="$native_dir/patches/libslirp-ipv4-udp-translation.patch"
 fence_poll_patch="$native_dir/patches/qemu-darwin-gpu-fence-poll.patch"
@@ -123,6 +124,7 @@ hda_no_catch_up_patch_sha256=01c72ca75e8ce8f3eb21541468e87ee29b96488bd4579c14a93
 audio_capture_thread_patch_sha256=1e8c71480829985091a583cba2da7eb4cb5137e21632a5f20811d40c0080d3ce
 audio_playback_thread_patch_sha256=66792195f69c517854970688172b7cc87bc6cfb0f4ad13334ec274db12eac473
 main_loop_qos_patch_sha256=a8e7dbdf602b9451123fe55a6a714c816dbcc5c94811d85dbbaedda473647e49
+gpu_mapping_patch_sha256=4b1e3aad228c35db7f52ae39bf2ffe10baa42345558c4cac122ee731a1fb8cfd
 udp_patch_sha256=95e8ee890be78cdce70b3ee54a8adac27be02421be08b986ae987c74ef8cec8c
 slirp_patch_sha256=20f3d424c79929fb82d240d0ee06b99e9f93ecfb9460579dc414303820d59f90
 slirp_source_root=libslirp-v4.9.4
@@ -268,6 +270,8 @@ macos_major=$(sw_vers -productVersion | awk -F. '{ print $1 }')
   die "missing SDL audio playback-thread patch: $audio_playback_thread_patch"
 [[ -f $main_loop_qos_patch && ! -L $main_loop_qos_patch ]] || \
   die "missing Darwin main-loop QoS patch: $main_loop_qos_patch"
+[[ -f $gpu_mapping_patch && ! -L $gpu_mapping_patch ]] || \
+  die "missing virtio-gpu mapping-entries patch: $gpu_mapping_patch"
 [[ -x $prepare_runtime && ! -L $prepare_runtime ]] || \
   die "missing runtime preparation script: $prepare_runtime"
 if [[ -n $archive_cache ]]; then
@@ -512,8 +516,10 @@ verify_file_sha "Try Omarchy SDL audio playback-thread patch" \
   "$audio_playback_thread_patch" "$audio_playback_thread_patch_sha256"
 verify_file_sha "Try Omarchy Darwin main-loop QoS patch" \
   "$main_loop_qos_patch" "$main_loop_qos_patch_sha256"
+verify_file_sha "Try Omarchy virtio-gpu mapping-entries patch" \
+  "$gpu_mapping_patch" "$gpu_mapping_patch_sha256"
 
-log "Applying the exact render, identity, display, immersive, pause-ownership, audio, folder, Darwin compatibility, memory reclaim, pinch, precise-scroll, ISO keyboard, USB exact-bus, minimum guest size, App Nap, audio pacing and threading, and main-loop QoS patches"
+log "Applying the exact render, identity, display, immersive, pause-ownership, audio, folder, Darwin compatibility, memory reclaim, pinch, precise-scroll, ISO keyboard, USB exact-bus, minimum guest size, App Nap, audio pacing and threading, main-loop QoS, and virtio-gpu mapping-entries patches"
 patch -d "$source_dir" -p1 -f -i "$texture_patch"
 patch -d "$source_dir" -p1 -f -i "$gpu_fix_patch"
 patch -d "$source_dir" -p1 -f -i "$identity_patch"
@@ -543,6 +549,7 @@ patch -d "$source_dir" -p1 -f -i "$minimum_guest_size_patch"
 patch -d "$source_dir" -p1 -f -i "$no_app_nap_patch"
 patch -d "$source_dir" -p1 -f -i "$main_loop_qos_patch"
 patch -d "$source_dir" -p1 -f -i "$media_keys_patch"
+patch -d "$source_dir" -p1 -f -i "$gpu_mapping_patch"
 
 virgl_root="$dependency_root/virglrenderer/$virgl_version"
 angle_root="$dependency_root/angle/$angle_version"

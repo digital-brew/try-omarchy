@@ -557,6 +557,12 @@ mkdir -m 700 "$work_dir/audio-routes"
 console_log="$vm_dir/console.log"
 [[ $storage_mode == persistent ]] || console_log="$work_dir/console.log"
 ((dry_run)) || [[ ! -f $console_log ]] || mv -f "$console_log" "$console_log.1"
+# QEMU's stdout and stderr are discarded, and guest-caused device errors are
+# only printed with -d guest_errors. Keep them beside the console log: a
+# rejected virtio-gpu command reaches the guest as a bare 0x1200 response and
+# its reason (e.g. an oversized scatter-gather list) exists only here.
+guest_error_log="${console_log%/*}/qemu-guest-errors.log"
+((dry_run)) || [[ ! -f $guest_error_log ]] || mv -f "$guest_error_log" "$guest_error_log.1"
 
 network_mac=$(qemu_network_mac) || fail "cannot prepare the VM network identity"
 if [[ $QEMU_NETWORK_MODE == bridged ]]; then
@@ -626,6 +632,8 @@ qemu_args=(
   -device 'virtserialport,bus=omarchy-serial.0,nr=7,chardev=omarchy-battery-bridge,name=dev.tryomarchy.battery'
   -chardev "socket,id=omarchy-timezone-bridge,path=$timezone_socket,server=on,wait=off"
   -device 'virtserialport,bus=omarchy-serial.0,nr=8,chardev=omarchy-timezone-bridge,name=dev.tryomarchy.timezone'
+  -d guest_errors
+  -D "$guest_error_log"
 )
 
 if [[ -n $package_to_install ]]; then
