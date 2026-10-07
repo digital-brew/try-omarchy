@@ -19,7 +19,7 @@ TEST_JOBS ?= 4
 SHELL_TESTS := network-helper qemu-networking qemu-port-forwarding \
   run-qemu-ssh-contract qemu-memory-contract qemu-power-actions \
   qemu-usb-passthrough qemu-monitor-ready qemu-persistent-storage \
-  qemu-args-lint
+  qemu-args-lint qemu-virtio-gpu-mapping
 SHELL_TEST_TARGETS := $(addprefix test-shell-,$(SHELL_TESTS))
 
 # Refresh the package lock before a guest rebuild when the Arch Linux ARM

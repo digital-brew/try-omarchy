@@ -1766,6 +1766,14 @@ if [[ -f $console_log ]]; then
   mv -f "$console_log" "$console_log.1" 2>/dev/null || true
 fi
 console_log_option=${console_log//,/,,}
+# QEMU's stdout and stderr are discarded, and guest-caused device errors are
+# only printed with -d guest_errors. Keep them beside the console log: a
+# rejected virtio-gpu command reaches the guest as a bare 0x1200 response and
+# its reason (e.g. an oversized scatter-gather list) exists only here.
+guest_error_log="${console_log%/*}/qemu-guest-errors.log"
+if [[ -f $guest_error_log ]]; then
+  mv -f "$guest_error_log" "$guest_error_log.1" 2>/dev/null || true
+fi
 
 network_mac=$(qemu_network_mac) || fail 'Cannot prepare the VM network identity.'
 if [[ $QEMU_NETWORK_MODE == bridged ]]; then
@@ -1841,6 +1849,8 @@ qemu_args=(
   -device 'virtserialport,bus=omarchy-serial.0,nr=7,chardev=omarchy-battery-bridge,name=dev.tryomarchy.battery'
   -chardev "socket,id=omarchy-timezone-bridge,path=$timezone_bridge_socket,server=on,wait=off"
   -device 'virtserialport,bus=omarchy-serial.0,nr=8,chardev=omarchy-timezone-bridge,name=dev.tryomarchy.timezone'
+  -d guest_errors
+  -D "$guest_error_log"
 )
 
 if [[ -f $resources_dir/integrations/manifest.json ]]; then

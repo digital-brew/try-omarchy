@@ -126,6 +126,19 @@ The runtime also bundles pinned ANGLE libraries for its upstream compatibility
 code. ANGLE's Metal backend is not the default display path. KosmicKrisp,
 Mesa's Vulkan-to-Metal driver, is not part of this path.
 
+### Large HiDPI displays
+
+Upstream QEMU refuses a GPU buffer whose guest memory spans more than 16384
+scatter-gather entries: 64 MiB of 4 KiB pages once guest memory is fragmented.
+One full-screen buffer of a 5K HiDPI guest (5120×3414) is 17070 pages, so
+Hyprland, browsers, video players and screenshots intermittently lost frames
+and the guest kernel logged `virtio_gpu_dequeue_ctrl_func *ERROR* response
+0x1200 (command 0x106)`. `macos/patches/qemu-virtio-gpu-mapping-entries.patch`
+raises the limit to 262144 entries (1 GiB). QEMU's guest-error log, which names
+the reason for such rejections, is kept beside the console log as
+`qemu-guest-errors.log`, with the previous session's copy as
+`qemu-guest-errors.log.1`.
+
 ### Not yet verified
 
 Window resize across a HiDPI boundary, Mac output-device switching mid-session,
