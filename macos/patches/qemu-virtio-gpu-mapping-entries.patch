@@ -1,0 +1,34 @@
+--- a/hw/display/virtio-gpu.c
++++ b/hw/display/virtio-gpu.c
+@@ -874,6 +874,17 @@
+                               &fb, res, &ss.r, &cmd->error);
+ }
+ 
++/*
++ * Upper bound on a guest backing's scatter-gather entries. Upstream allows
++ * 16384, i.e. 64 MiB of 4 KiB pages when no two pages are adjacent. One
++ * full-screen 32-bit buffer of a 5K HiDPI guest (5120x3414) is 17070 pages,
++ * so once guest memory is fragmented its backing is rejected and the guest
++ * only sees VIRTIO_GPU_RESP_ERR_UNSPEC (0x1200) for RESOURCE_ATTACH_BACKING.
++ * 262144 entries cover 1 GiB of scattered pages; the entry table is a
++ * transient 4 MiB allocation at most.
++ */
++#define VIRTIO_GPU_MAX_MAPPING_ENTRIES 262144
++
+ int virtio_gpu_create_mapping_iov(VirtIOGPU *g,
+                                   uint32_t nr_entries, uint32_t offset,
+                                   struct virtio_gpu_ctrl_command *cmd,
+@@ -884,10 +895,10 @@
+     size_t esize, s;
+     int e, v;
+ 
+-    if (nr_entries > 16384) {
++    if (nr_entries > VIRTIO_GPU_MAX_MAPPING_ENTRIES) {
+         qemu_log_mask(LOG_GUEST_ERROR,
+-                      "%s: nr_entries is too big (%d > 16384)\n",
+-                      __func__, nr_entries);
++                      "%s: nr_entries is too big (%d > %d)\n",
++                      __func__, nr_entries, VIRTIO_GPU_MAX_MAPPING_ENTRIES);
+         return -1;
+     }
+ 
