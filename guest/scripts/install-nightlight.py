@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import tempfile
 
@@ -16,6 +17,17 @@ GUEST = Path(__file__).resolve().parents[1]
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+# The shell-qtquick-611 backport pins bare QtQuick imports, and this backport
+# is reviewed against the pinned files. Existing VMs may still have the bare
+# import, with or without the night-light change, so compare and stage both
+# through the same line rewrite.
+BARE_QTQUICK = re.compile(rb"^import QtQuick[^\S\r\n]*$", re.MULTILINE)
+
+
+def pinned(path):
+    return BARE_QTQUICK.sub(b"import QtQuick 6.11", path.read_bytes())
 
 
 def main():
@@ -42,7 +54,7 @@ def main():
         path = root / relative
         if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
             parser.error(f"missing or unsafe installed target: {relative}")
-        actual = digest(path)
+        actual = hashlib.sha256(pinned(path)).hexdigest()
         if actual not in (item["beforeSha256"], item["afterSha256"]):
             parser.error(f"unsupported version or local changes: {relative}")
         states.append(actual == item["afterSha256"])
@@ -62,6 +74,7 @@ def main():
             path = omarchy / source
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(root / destination, path)
+            path.write_bytes(pinned(path))
         if not all(states):
             module_spec = importlib.util.spec_from_file_location("backports", GUEST / "scripts/apply-omarchy-backports.py")
             module = importlib.util.module_from_spec(module_spec)

@@ -177,6 +177,16 @@ class NightlightInstallerTests(unittest.TestCase):
         self.assertEqual(self.command.read_bytes(), original)
         self.install("--apply")
 
+    def test_qtquick_pin_is_added_to_a_stock_or_installed_service(self):
+        self.install("--apply")
+        self.assertTrue(self.service.read_text().startswith("import QtQuick 6.11\n"))
+        # A VM that received the night-light change before the Qt 6.12 pin
+        # still has the bare import; the installer recognizes and pins it.
+        self.service.write_text(self.service.read_text().replace("import QtQuick 6.11\n", "import QtQuick\n", 1))
+        self.assertIn("Service.qml", self.install("--apply").stdout)
+        self.assertTrue(self.service.read_text().startswith("import QtQuick 6.11\n"))
+        self.assertIn("already installed", self.install("--apply").stdout)
+
     def test_local_edits_are_refused_before_installing_any_assets(self):
         self.service.write_text(self.service.read_text() + "\n// local change\n")
         result = self.install("--apply", code=2)

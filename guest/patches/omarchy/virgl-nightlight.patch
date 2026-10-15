@@ -32,7 +32,7 @@
 --- a/shell/plugins/services/nightlight/Service.qml
 +++ b/shell/plugins/services/nightlight/Service.qml
 @@ -1,4 +1,5 @@
- import QtQuick
+ import QtQuick 6.11
  import Quickshell.Io
 +import Quickshell.Hyprland
  import "NightlightModel.js" as NightlightModel
@@ -109,18 +109,18 @@
 +      else root.requestedTemperature = null
      }
    }
-@@ -81,4 +99,11 @@
+@@ -84,4 +102,11 @@
+   }
  
-       root.refresh()
-+    }
-+  }
-+
 +  Connections {
 +    target: Hyprland
 +    function onRawEvent(event) {
 +      if (event.name === "configreloaded") root.refresh()
-     }
-   }
++    }
++  }
++
+   Component.onCompleted: refresh()
+ 
 @@ -108,6 +133,5 @@
  
      function toggle(): string {
