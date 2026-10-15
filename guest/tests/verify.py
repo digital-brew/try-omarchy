@@ -668,7 +668,7 @@ def main() -> None:
             "buildPackages": {
                 "base-devel": "1-2",
                 "binutils": "2.46+r70+g155188ea10a7-1",
-                "ccache": "4.14-1",
+                "ccache": "4.14.1-1",
                 "cmake": "4.4.4-1",
                 "gcc": "16.1.1+r12+g301eb08fa2c5-1",
                 "gcc-libs": "16.1.1+r12+g301eb08fa2c5-1",
