@@ -2328,6 +2328,18 @@ HOTPLUG=1
             sync_once() == [line.replace('scale = "6"', 'scale = "2"') for line in expected_large_zoom],
             "automatic zoom remains available after a large explicit zoom",
         )
+        # An explicit refresh cap lowers the pixel clock, keeping the timings.
+        monitor_config.write_text("local omarchy_monitor_refresh_hz = 30\n")
+        check(
+            sync_once()
+            == [line.replace("modeline 1236 ", "modeline 477 ").replace('scale = "6"', 'scale = "2"') for line in expected_large_zoom],
+            "an explicit refresh cap lowers the synced mode's refresh rate",
+        )
+        monitor_config.write_text("local omarchy_monitor_refresh_hz = 120\n")
+        check(
+            sync_once() == [line.replace('scale = "6"', 'scale = "2"') for line in expected_large_zoom],
+            "a refresh cap above the host rate leaves the synced mode unchanged",
+        )
 
     shell_files = [
         GUEST / "test",
