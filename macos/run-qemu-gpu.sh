@@ -597,7 +597,7 @@ qemu_args=(
   -serial none
   -monitor none
   -qmp "unix:$qmp_socket,server=on,wait=off"
-  -drive "if=none,id=omarchy-root,file=${working_disk//,/,,},format=raw,media=disk,cache=writeback"
+  -drive "if=none,id=omarchy-root,file=${working_disk//,/,,},format=raw,media=disk,cache=writeback,discard=unmap"
   -device 'virtio-blk-pci,drive=omarchy-root,serial=omarchy-root,bootindex=0'
   -device 'virtio-gpu-gl-pci,max_outputs=1,xres=1920,yres=1080,romfile='
   -display "cocoa,gl=on,show-cursor=on,zoom-to-fit=on,full-screen=$full_screen,full-grab=on,immersive=$immersive,swap-opt-cmd=off"

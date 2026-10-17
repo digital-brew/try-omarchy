@@ -185,6 +185,9 @@ assert_not_contains "$output" "tryomarchy.package"
 assert_not_contains "$output" "tryomarchy.ssh_access"
 assert_not_contains "$output" "Launch phase: preparing"
 
+# --- guest TRIM reaches the sparse host disk ----------------------------------------
+assert_contains "$output" "format=raw,media=disk,cache=writeback,discard=unmap"
+
 # --- a VM from an earlier direct-boot version is attached read-only ----------------
 assert_not_contains "$output" "omarchy-previous"
 mkdir -p "$state/disks/current"
