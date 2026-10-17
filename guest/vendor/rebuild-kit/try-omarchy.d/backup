@@ -20,11 +20,20 @@
 #                          default browser and mailto handler
 #   home.tar.zst           $HOME minus caches, package stores and rebuildable trees
 #   lerd-databases/        SQL dumps of every registered Lerd site (if Lerd is set up)
+#   engram-export.json     every engram memory, session and prompt (engram export --all)
+#
+# A full backup is built in DESTINATION_DIR.new and only replaces
+# DESTINATION_DIR when every step succeeded. The previous one is kept next to
+# it as DESTINATION_DIR-YYYY-MM-DD-HHMMSS (when it was taken), and the oldest
+# of those are deleted so KEEP (3) backups remain in total. --no-home and
+# --no-aur-files update DESTINATION_DIR in place without rotating.
 #
 # The stock try-omarchy-backup is not called: its home archive keeps flatpak
 # and mise stores, qmk_firmware and browser caches, which are all rebuilt by
 # try-omarchy --restore from the lists above instead.
 set -euo pipefail
+# set -e stops on the first failing command; say which, instead of exiting mute.
+trap 'echo "try-omarchy --backup: stopped at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 usage() { sed -n '3,6p' "$0" | sed 's/^# \{0,1\}//'; }
 fail() { echo "try-omarchy --backup: $*" >&2; exit 1; }
@@ -44,8 +53,20 @@ if [[ -z $dest ]]; then
   mountpoint -q /mnt/mac || fail "the Mac share is not mounted; enable it in the Try Omarchy start menu or pass a destination"
   dest=/mnt/mac/omarchy-rebuild/snapshot
 fi
-mkdir -p "$dest" || fail "cannot create $dest"
-dest=$(cd "$dest" && pwd -P)
+KEEP=3
+mkdir -p "$(dirname "$dest")" || fail "cannot create $(dirname "$dest")"
+final=$(cd "$(dirname "$dest")" && pwd -P)/$(basename "$dest")
+rotate=$(( with_home && with_aur_files ))
+if (( rotate )); then
+  # Build the new backup beside the current one; a leftover from a failed run
+  # is discarded, and a failure in this run removes its half-written copy.
+  dest=$final.new
+  rm -rf "$dest"; mkdir -p "$dest" || fail "cannot create $dest"
+  trap 'status=$?; (( status )) && [[ -d $dest && $dest == *.new ]] && rm -rf "$dest"' EXIT
+else
+  dest=$final
+  mkdir -p "$dest" || fail "cannot create $dest"
+fi
 factory=/usr/share/try-omarchy/packages.lock.txt
 [[ -r $factory ]] || fail "factory package list not found: $factory"
 
@@ -70,12 +91,18 @@ mkdir -p "$dest/aur-packages"; rm -rf "$dest/pkgbuilds"; mkdir -p "$dest/pkgbuil
 : >"$dest/aur-sources.txt"
 repack="$(dirname "$(readlink -f "$0")")/repack"
 keep=()
+# Only folders that exist: find fails on a missing one, and under set -e that
+# ended the whole backup silently (the Mac's Work folder left the share).
+search_dirs=()
+for d in "$dest/aur-packages" "$final/aur-packages" "$HOME/.cache/yay" "$HOME/Projects/Linux" /mnt/mac/Work; do
+  [[ -d $d ]] && search_dirs+=("$d")
+done
 while read -r pkg; do
   [[ -n $pkg ]] || continue
   file=""
   if [[ $with_aur_files == 1 && $pkg != ZenNotes ]]; then
     ver=$(pacman -Q "$pkg" 2>/dev/null | awk '{ print $2 }')
-    file=$(find "$dest/aur-packages" "$HOME/.cache/yay" "$HOME/Projects/Linux" /mnt/mac/Work -maxdepth 2 \
+    file=$(find "${search_dirs[@]}" -maxdepth 2 \
              -name "${pkg}-${ver}-*.pkg.tar.*" -not -name '*.sig' 2>/dev/null | sort | head -1)
     if [[ -z $file && -x $repack ]]; then
       echo "  repacking $pkg $ver from the installed files"
@@ -92,6 +119,8 @@ while read -r pkg; do
   esac
 done <"$dest/packages-aur.txt"
 # Drop files whose package is gone or now installed at another version.
+# (In a rotated backup the directory starts empty, so this only prunes when
+# updating in place.)
 if [[ $with_aur_files == 1 ]]; then
   for f in "$dest/aur-packages"/*; do
     [[ -e $f ]] || continue
@@ -140,19 +169,42 @@ printf '  %s unowned udev rules, %s unowned /usr/local/bin files\n' "$(ls "$dest
 # -------------------------------------------------------------------- home
 if (( with_home )); then
   say "Home directory"
-  tar --zstd -cf "$dest/home.tar.zst" -C "$HOME" \
+  # --one-file-system: never descend into mounts under $HOME (the sshfs mounts
+  # of the Mac's drives at ~/mac/* were archived over the network on
+  # 2026-09-29). The archive goes to a temp file and replaces the previous one
+  # only when tar succeeds, so a failed run keeps the last good archive.
+  # Exit status 1 only means a file changed while it was read (browser
+  # profiles, Slack); 2 and above is a real failure. Lerd's MySQL/Redis data
+  # belongs to the containers' subuids (unreadable here) and is covered by the
+  # SQL dumps in lerd-databases/ below.
+  rc=0
+  # Build leftovers only in hand-built package trees (those with a PKGBUILD);
+  # other projects under ~/Projects/Linux keep their own src/ and pkg/ folders.
+  pkgbuild_excludes=()
+  for tree in "$HOME"/Projects/Linux/*/; do
+    [[ -f $tree/PKGBUILD ]] || continue
+    n=$(basename "$tree")
+    pkgbuild_excludes+=(--exclude="./Projects/Linux/$n/src" --exclude="./Projects/Linux/$n/pkg" --exclude="./Projects/Linux/$n/*.pkg.tar.*")
+  done
+  tar --zstd -cf "$dest/home.tar.zst.partial" -C "$HOME" --one-file-system \
     --exclude=./.cache --exclude=./.local/share/Trash --exclude-caches-all \
     --exclude=./.npm --exclude=./.cargo/registry \
     --exclude=./.local/share/containers \
+    --exclude=./.local/share/lerd/data \
     --exclude=./.local/share/flatpak --exclude=./.local/share/mise --exclude=./.local/share/fnm \
     --exclude=./.local/share/qmk-venv --exclude=./qmk_firmware \
     --exclude=./.local/share/nvim/lazy \
     --exclude='./.config/*/Cache' --exclude='./.config/*/Code Cache' --exclude='./.config/*/GPUCache' \
     --exclude='./.config/*/CachedData' --exclude='./.config/*/Service Worker' --exclude='./.config/*/DawnGraphiteCache' --exclude='./.config/*/DawnWebGPUCache' \
     --exclude='./.var/app/*/cache' \
-    --exclude='./Projects/Linux/*/src' --exclude='./Projects/Linux/*/pkg' --exclude='./Projects/Linux/*/*.pkg.tar.*' \
+    "${pkgbuild_excludes[@]}" \
     --exclude='*/node_modules' \
-    . || fail "home archive failed"
+    . || rc=$?
+  if (( rc > 1 )); then
+    rm -f "$dest/home.tar.zst.partial"
+    fail "home archive failed (tar exit $rc); the previous backup was kept"
+  fi
+  mv -f "$dest/home.tar.zst.partial" "$dest/home.tar.zst"
   printf '  %s\n' "$(du -h "$dest/home.tar.zst" | cut -f1)"
 fi
 
@@ -169,8 +221,23 @@ if command -v lerd >/dev/null 2>&1 && [[ -r $lerd_registry ]]; then
     else rm -f -- "$dump"; fi
   done < <(python3 -c 'import sys,yaml
 for s in (yaml.safe_load(open(sys.argv[1])) or {}).get("sites") or []:
-    if isinstance(s,dict) and s.get("name") and s.get("path"): print(f"{s[\"name\"]}\t{s[\"path\"]}")' "$lerd_registry")
+    if isinstance(s,dict) and s.get("name") and s.get("path"): print(s["name"] + "\t" + s["path"])' "$lerd_registry")
   printf '  %s site database(s)\n' "$(wc -l <"$dest/lerd-databases/index.tsv")"
+fi
+
+# ------------------------------------------------------------------ engram
+# The home archive copies ~/.engram/engram.db and its WAL while engram may be
+# writing; the JSON export is a consistent copy that `engram import` restores.
+# --all covers every project (the default is only the one for the cwd).
+if command -v engram >/dev/null 2>&1 && [[ -d ${ENGRAM_DATA_DIR:-$HOME/.engram} ]]; then
+  say "Engram memories"
+  if out=$(cd "$HOME" && engram export "$dest/engram-export.json" --all 2>&1); then
+    grep -E '^[[:space:]]+(Sessions|Observations|Prompts):' <<<"$out" | sed 's/^[[:space:]]*/  /'
+  else
+    rm -f "$dest/engram-export.json"
+    echo "  engram export failed; the database files in the home archive are the only copy:"
+    sed 's/^/    /' <<<"$out" | head -5
+  fi
 fi
 
 # ---------------------------------------------------------- manifest + inventory
@@ -269,5 +336,30 @@ inv += ["", "## User themes", ", ".join(themes) or "(none)", "",
         "## Unowned udev rules", ", ".join(sorted(os.listdir(f"{dest}/system/udev"))) or "(none)", ""]
 open(f"{dest}/inventory.md", "w").write("\n".join(inv))
 PY
+# ------------------------------------------------------------------ rotate
+if (( rotate )); then
+  trap - EXIT
+  say "Rotate"
+  [[ -d $final ]] && rmdir "$final" 2>/dev/null || true  # an empty leftover is not a backup
+  if [[ -d $final ]]; then
+    stamp=$(python3 -c 'import datetime,json,sys
+m=json.load(open(sys.argv[1]))
+print(datetime.datetime.fromisoformat(m["createdAt"]).astimezone().strftime("%Y-%m-%d-%H%M%S"))' "$final/manifest.json" 2>/dev/null \
+      || date -r "$final" +%Y-%m-%d-%H%M%S)
+    old=$final-$stamp
+    [[ -e $old ]] && old=$old-$$
+    mv "$final" "$old" || fail "cannot move the previous backup to $old; the new one is in $dest"
+    echo "  previous backup kept as $(basename "$old")"
+  fi
+  mv "$dest" "$final" || fail "cannot move $dest to $final"
+  dest=$final
+  # Keep the newest KEEP-1 dated copies next to the current backup.
+  mapfile -t dated < <(find "$(dirname "$final")" -mindepth 1 -maxdepth 1 -type d \
+    -name "$(basename "$final")-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*" | sort -r)
+  for old in "${dated[@]:KEEP-1}"; do
+    rm -rf -- "$old" && echo "  removed $(basename "$old")"
+  done
+fi
+
 echo "Snapshot complete: $dest"
 echo "In a fresh VM: try-omarchy --restore $dest"

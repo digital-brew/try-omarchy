@@ -11,25 +11,28 @@
 #              1Password app via the Omarchy installer, the rest via omarchy-pkg-aur-add
 #   flatpaks   Flathub apps (user installation) and their per-app overrides
 #   home       unpack home.tar.zst over $HOME (asks first unless --yes)
+#   dotfiles   move what blocks the ~/dotfiles links to ~/bak, stow every package, offer to delete ~/bak
 #   system     enable services, unowned udev rules and /usr/local/bin wrappers, groups, login shell
-#   tools      mise toolchains, QMK CLI venv + firmware checkout, font cache
+#   tools      mise toolchains, QMK CLI venv + firmware checkout + qmk doctor, font cache
 #   launchers  remove the stock web apps listed in REMOVE_LAUNCHERS, hide the
 #              duplicates in HIDE_LAUNCHERS, and install the same list as an
 #              omarchy post-update hook so they stay gone after updates
 #   theme      apply the snapshot's theme and font (keeping foot's font line), restart the shell
 #   verify     check the restored plugins, bar widgets, mailto handler, icon links and
 #              agent state; fix what it can and note the rest, then restart the shell
-#   lerd       import Lerd site databases (needs `lerd install` first)
+#   lerd       run `lerd install` if Lerd is not set up yet, fetch the PHP images and Node
+#              versions in LERD_PHP/LERD_NODE, then import the site databases
+#   engram     import engram-export.json (entries already present are skipped)
 #   todo       print the manual steps that need a human (logins, tokens)
 #
 # Default source: /mnt/mac/omarchy-rebuild/snapshot. Anything that fails is
 # listed at the end instead of stopping the run; rerun with --only to retry.
 set -uo pipefail
 
-usage() { sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '3,29p' "$0" | sed 's/^# \{0,1\}//'; }
 fail() { echo "try-omarchy --restore: $*" >&2; exit 1; }
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
-ALL_STEPS="packages aur flatpaks home system tools launchers theme verify lerd todo"
+ALL_STEPS="packages aur flatpaks home dotfiles system tools launchers theme verify lerd engram todo"
 only=""; skip=""; yes=0; src=""
 while (($#)); do
   case "$1" in
@@ -122,10 +125,65 @@ fi
 if want home && [[ -f $src/home.tar.zst ]]; then
   say "Home directory"
   ok=1
-  if (( ! yes )); then read -r -p "Unpack home.tar.zst over $HOME, replacing files with the same names? [y/N] " a; [[ $a == [Yy]* ]] || ok=0; fi
-  if (( ok )); then tar --zstd -xf "$src/home.tar.zst" -C "$HOME" && echo "   restored" || note "home archive extraction failed"; else echo "   skipped"; fi
+  if (( ! yes )); then read -r -p "Unpack home.tar.zst over $HOME, replacing files and folders with the same names? [y/N]" a; [[ $a == [Yy]* ]] || ok=0; fi
+  # --recursive-unlink: the archive stores stowed configs as symlinks into
+  # ~/dotfiles (~/.config/hypr -> ../dotfiles/hypr/.config/hypr), and a fresh VM
+  # ships real directories at those paths; without it tar refuses to replace them.
+  if (( ok )); then tar --zstd -xf "$src/home.tar.zst" -C "$HOME" --recursive-unlink && echo "   restored" || note "home archive extraction failed"; else echo "   skipped"; fi
   # The archive stores ~/linux-share as a symlink to /mnt/mac; recreate it if the VM lacks it.
   [[ -e $HOME/linux-share ]] || ln -s /mnt/mac "$HOME/linux-share"
+fi
+
+# ---------------------------------------------------------------- dotfiles
+# `stow */` only links where nothing exists yet. A fresh VM already has real
+# ~/.config/hypr, ~/.config/omarchy ..., so stow descended into them and refused
+# to overwrite the files inside. Whatever stands where a package wants its link
+# is moved to ~/bak first (the shared parents in STOW_CONTAINERS are entered
+# instead); when stow succeeds you are asked whether to delete ~/bak. After a
+# home restore the links are already in place and nothing is moved.
+STOW_CONTAINERS=" .config .local .local/bin .local/share .local/state "
+if want dotfiles; then
+  say "Dotfiles (stow)"
+  dot=$HOME/dotfiles bak=$HOME/bak
+  if [[ ! -d $dot ]]; then note "no ~/dotfiles (restore home first, or clone it)"
+  elif ! have stow && ! omarchy-pkg-add stow >/dev/null 2>&1; then note "stow is not installed (omarchy-pkg-add stow)"
+  else
+    moved=0
+    clear_for_stow() {  # $1 package, $2 path relative to the package root and to $HOME
+      local pkg=$1 rel=$2 t=$HOME/$2 e
+      if [[ -L $t ]]; then
+        [[ $(readlink -f "$t") == "$(readlink -f "$dot/$pkg/$rel")" ]] && return 0
+      elif [[ -d $t && -d $dot/$pkg/$rel && $STOW_CONTAINERS == *" $rel "* ]]; then
+        for e in "$dot/$pkg/$rel"/* "$dot/$pkg/$rel"/.[!.]*; do
+          [[ -e $e || -L $e ]] && clear_for_stow "$pkg" "$rel/${e##*/}"
+        done
+        return 0
+      elif [[ ! -e $t ]]; then return 0
+      fi
+      echo "   moving ~/$rel to ~/bak/$rel"
+      mkdir -p "$bak/$(dirname "$rel")" && rm -rf -- "${bak:?}/$rel" && mv -- "$t" "$bak/$rel" \
+        && moved=$((moved+1)) || note "could not move ~/$rel to ~/bak"
+    }
+    pkgs=()
+    for p in "$dot"/*/; do
+      p=$(basename "$p"); pkgs+=("$p")
+      for e in "$dot/$p"/* "$dot/$p"/.[!.]*; do
+        [[ -e $e || -L $e ]] || continue
+        case ${e##*/} in .git|.stow-local-ignore|README*|LICENSE*) continue ;; esac
+        clear_for_stow "$p" "${e##*/}"
+      done
+    done
+    if out=$(stow -d "$dot" -t "$HOME" --restow "${pkgs[@]}" 2>&1); then
+      echo "   ${#pkgs[@]} packages stowed, $moved existing path(s) moved to ~/bak"
+      if (( moved )) && [[ -t 0 ]]; then
+        read -r -p "   Everything is linked. Delete ~/bak? [y/N] " a
+        if [[ $a == [Yy]* ]]; then rm -rf -- "$bak" && echo "   ~/bak deleted"; else echo "   ~/bak kept"; fi
+      elif (( moved )); then echo "   ~/bak kept (no terminal to ask)"; fi
+    else
+      note "stow failed; the originals are in ~/bak (rerun: try-omarchy --restore --only dotfiles)"
+      sed 's/^/      /' <<<"$out" | head -8
+    fi
+  fi
 fi
 
 # ------------------------------------------------------------------ system
@@ -143,7 +201,9 @@ if want system && [[ -d $src/system ]]; then
   # A current yt-dlp for TubeLander: the repo package lags and its stream URLs
   # refuse seeks; uv keeps a per-user copy at ~/.local/bin/yt-dlp.
   if command -v uv >/dev/null 2>&1; then
-    [[ -x $HOME/.local/bin/yt-dlp ]] || { echo "   uv tool install yt-dlp"; uv tool install yt-dlp >/dev/null 2>&1 || note "uv tool install yt-dlp"; }
+    # --force: the home archive brings back ~/.local/bin/yt-dlp as a link into
+    # ~/.local/share/uv/tools, which it does not carry, and uv refuses to replace it.
+    [[ -x $HOME/.local/bin/yt-dlp ]] || { echo "   uv tool install yt-dlp"; uv tool install --force yt-dlp >/dev/null 2>&1 || note "uv tool install yt-dlp"; }
   else note "uv missing: install it, then uv tool install yt-dlp (TubeLander)"; fi
   # Hand-made /usr/local/bin wrappers (ghostty software-GL wrapper, 1password).
   # Files Try Omarchy ships itself already exist in the fresh VM and are skipped.
@@ -186,6 +246,12 @@ if want tools; then
   if [[ -x $HOME/.local/bin/qmk && ! -d $HOME/qmk_firmware ]]; then
     echo "   qmk setup (clones ~/qmk_firmware, several minutes)"
     "$HOME/.local/bin/qmk" setup -y --home "$HOME/qmk_firmware" >/dev/null 2>&1 || note "qmk setup (rerun: qmk setup -y)"
+  fi
+  if [[ -x $HOME/.local/bin/qmk && -d $HOME/qmk_firmware ]]; then
+    # -y lets it fix what it finds (udev rules, submodules); it does not need the keyboard.
+    echo "   qmk doctor"
+    "$HOME/.local/bin/qmk" doctor -y 2>&1 | grep -E '☒|⚠|WARNING|ERROR' | sed 's/^/      /'
+    ((PIPESTATUS[0] == 0)) || note "qmk doctor reported problems (rerun: qmk doctor)"
   fi
   fc-cache -f >/dev/null 2>&1 || true
   [[ -x $HOME/.local/bin/omarchy-refresh-applications ]] && "$HOME/.local/bin/omarchy-refresh-applications" >/dev/null 2>&1 || true
@@ -277,12 +343,16 @@ if want verify; then
     omarchy plugin validate "$p" >/dev/null 2>&1 || note "omarchy plugin validate $(basename "$p")"
   done
 
-  # Every bar widget id must have a plugin dir, user or first-party.
+  # Every bar widget id must be a known plugin, user or first-party. Asked of
+  # `omarchy plugin list` rather than looked up on disk: first-party plugins
+  # live in grouped subfolders (shell/plugins/panels/audio) whose names do not
+  # match their ids.
   shell_json=$HOME/.config/omarchy/shell.json
+  known_plugins=" $(omarchy plugin list 2>/dev/null | awk 'NR > 1 { print $1 }' | tr '\n' ' ') "
   if [[ -r $shell_json ]]; then
     while read -r wid; do
       [[ -n $wid ]] || continue
-      [[ -d $plugin_root/$wid || -d /usr/share/omarchy/shell/plugins/$wid ]] || note "bar widget '$wid' has no plugin dir"
+      [[ $known_plugins == *" $wid "* ]] || note "bar widget '$wid' is not an installed plugin"
     done < <(python3 -c 'import json, sys
 try: layout = json.load(open(sys.argv[1])).get("bar", {}).get("layout", {}) or {}
 except Exception: layout = {}
@@ -340,16 +410,69 @@ for side in layout.values():
 fi
 
 # -------------------------------------------------------------------- lerd
+LERD_PHP=(8.5 8.4 8.3 8.2)
+LERD_NODE=(25 24 23 22)
 if want lerd && [[ -r $src/lerd-databases/index.tsv ]]; then
   say "Lerd databases"
+  # A fresh VM has the lerd package but no setup yet; run it here (.test + HTTPS,
+  # as the restored sites expect) so the imports below have a database to go to.
+  if command -v lerd >/dev/null && ! lerd status >/dev/null 2>&1; then
+    echo "   lerd install (first-time setup)"
+    lerd install --dns managed || note "lerd install (run it, then: try-omarchy --restore --only lerd $src)"
+  fi
+  # The home archive leaves out ~/.local/share/lerd/data, and podman will not
+  # start redis/rustfs without their bind-mount dirs (statfs: no such file).
+  if command -v lerd >/dev/null; then
+    for d in redis rustfs; do
+      [[ -d $HOME/.local/share/lerd/data/$d ]] && continue
+      mkdir -p "$HOME/.local/share/lerd/data/$d"
+      systemctl --user reset-failed "lerd-$d" 2>/dev/null; systemctl --user restart "lerd-$d" 2>/dev/null || true
+    done
+  fi
+  # PHP-FPM images and Node versions to have ready. The home archive carries the
+  # lerd units but not the podman images, so without this the php8x-fpm units
+  # fail with "short-name lerd-php84-fpm:local did not resolve". fetch skips
+  # images that already exist.
+  if command -v lerd >/dev/null && lerd status >/dev/null 2>&1; then
+    echo "   lerd fetch PHP ${LERD_PHP[*]}"
+    lerd fetch "${LERD_PHP[@]}" || note "lerd fetch ${LERD_PHP[*]}"
+    for v in "${LERD_NODE[@]}"; do
+      echo "   lerd node:install $v"
+      lerd node:install "$v" >/dev/null 2>&1 || note "lerd node:install $v"
+    done
+  fi
   if ! command -v lerd >/dev/null; then echo "   lerd not installed, skipping"
-  elif ! lerd status >/dev/null 2>&1; then echo "   Lerd is not set up. Run 'lerd install', then: try-omarchy --restore --only lerd $src"
+  elif ! lerd status >/dev/null 2>&1; then echo "   Lerd is still not set up; after 'lerd install' run: try-omarchy --restore --only lerd $src"
   else
     while IFS=$'\t' read -r site path; do
       [[ -n $site ]] || continue
       dump="$src/lerd-databases/${site//\//_}.sql"
       if [[ -d $path && -s $dump ]]; then (cd "$path" && lerd db:import --fresh --no-pull "$dump") || note "lerd import $site"; else note "lerd $site (site dir or dump missing)"; fi
     done <"$src/lerd-databases/index.tsv"
+  fi
+fi
+
+# ------------------------------------------------------------------ engram
+# The home step already brings ~/.engram back; importing the JSON export on top
+# is safe (entries already present are skipped) and fills in anything the raw
+# copy lost. A database that fails SQLite's check is set aside first so the
+# import rebuilds it from the export alone.
+if want engram && [[ -s $src/engram-export.json ]]; then
+  say "Engram memories"
+  if ! command -v engram >/dev/null 2>&1; then
+    note "engram not installed (engram-bin); then: try-omarchy --restore --only engram"
+  else
+    db=${ENGRAM_DATA_DIR:-$HOME/.engram}/engram.db
+    if [[ -f $db ]] && [[ $(python3 -c 'import sqlite3,sys; print(sqlite3.connect(sys.argv[1]).execute("pragma quick_check").fetchone()[0])' "$db" 2>/dev/null) != ok ]]; then
+      aside=$db.broken-$(date +%Y%m%d-%H%M%S)
+      echo "   $db fails its integrity check; moved aside to $(basename "$aside")"
+      for f in "$db" "$db-wal" "$db-shm"; do [[ -e $f ]] && mv "$f" "$aside${f#"$db"}"; done
+    fi
+    if out=$(cd "$HOME" && engram import "$src/engram-export.json" 2>&1); then
+      grep -E '^[[:space:]]+(Sessions|Observations|Prompts):' <<<"$out" | sed 's/^[[:space:]]*/   imported (new only) /'
+    else
+      note "engram import failed: $(tail -1 <<<"$out")"
+    fi
   fi
 fi
 
@@ -365,7 +488,7 @@ if want todo; then
    5. Tailscale: `sudo tailscale up`. GitHub: `gh auth status` (credentials were in the home archive).
    6. Browsers, Slack, Signal, Telegram, MailLander: profiles were restored; re-enter anything
       that is device-bound (Signal relink, 2FA prompts).
-   7. QMK: plug the keyboard in and run `qmk doctor`.
+   7. QMK: plug the keyboard in and check it shows up (`qmk doctor` already ran).
    8. If the theme step asked for a password (browser colour policy) and you dismissed it, rerun
       `omarchy theme set <theme>` once.
    9. MailLander: the keyring unlocks with your login password. If the mailboxes are missing,

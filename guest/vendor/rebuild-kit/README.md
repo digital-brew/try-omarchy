@@ -38,7 +38,25 @@ try-omarchy --backup [--no-home] [--no-aur-files] [DESTINATION_DIR]
 ```
 
 Writes a self-contained snapshot directory (default
-`/mnt/mac/omarchy-rebuild/snapshot`):
+`/mnt/mac/omarchy-rebuild/snapshot`).
+
+A full backup is built in `snapshot.new/` and only replaces `snapshot/` when
+every step succeeded; a failed run deletes its half-written copy and leaves the
+existing backups alone. The previous `snapshot/` is kept as
+`snapshot-YYYY-MM-DD-HHMMSS` (the time it was taken), and the oldest of those
+are deleted so three backups remain: the current one and two dated ones
+(`KEEP=3` in the script). Prebuilt AUR files are reused from the previous
+snapshot. `--no-home` and `--no-aur-files` update `snapshot/` in place without
+rotating. `try-omarchy --restore` reads `snapshot/` unless given a dated one.
+
+The home archive stays on the VM's own disk (`tar --one-file-system`), so the
+sshfs mounts of the Mac's drives under `~/mac/` are not copied. Lerd's raw
+MySQL/Redis data is excluded (it belongs to the containers' users and a copy of
+a running database is not a backup); the SQL dumps in `lerd-databases/` are.
+A file changing while it is read (browser profiles, Slack) is a warning, not a
+failure.
+
+The directory holds:
 
 | File / folder | What it holds |
 |---|---|
@@ -54,6 +72,7 @@ Writes a self-contained snapshot directory (default
 | `system/` | enabled services, unowned udev rules, unowned `/usr/local/bin` files, groups, login shell, default browser, `mailto-handler.txt` |
 | `home.tar.zst` | `$HOME` minus caches, package stores and rebuildable trees |
 | `lerd-databases/` | SQL dump per registered Lerd site, when Lerd is set up |
+| `engram-export.json` | `engram export --all`: every engram memory, session and prompt, as a consistent copy next to the raw `~/.engram` files in the home archive |
 
 Excluded from the home archive on purpose, because the rebuild recreates
 them: `~/.cache`, `~/.npm`, `~/.local/share/{flatpak,mise,fnm,containers}`,
@@ -149,7 +168,11 @@ stopped.
    plugins and restarts the shell. Everything it cannot fix is a note, not a
    failure.
 10. `lerd`: imports the site databases once `lerd install` has been run.
-11. `todo`: prints the manual checklist (section 4).
+11. `engram`: `engram import` of `engram-export.json` on top of the restored
+    `~/.engram`. Entries already present are skipped, so it only fills gaps;
+    a database that fails SQLite's `quick_check` is moved aside first
+    (`engram.db.broken-<time>`) and rebuilt from the export.
+12. `todo`: prints the manual checklist (section 4).
 
 ## 2. Rebuild procedure
 

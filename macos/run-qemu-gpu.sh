@@ -821,16 +821,16 @@ rebuild_kit = exact_keys(
     "build spec rebuild kit component",
 )
 if rebuild_kit != {
-    "version": "2026.09.28",
+    "version": "2026.09.30",
     "pkgrel": "1",
     "source": "vendor/rebuild-kit",
     "license": "custom:personal",
     "files": {
-        "README.md": "0832d2dffd7318f7b08072a72b09efeabf4241ccfad54d85aab3e29156caeca6",
+        "README.md": "962404580f53c6bc0709447287c578bb7c3c6ddd73e6e64197ec99eaf4a001ec",
         "try-omarchy": "829809841edc445c97057c9c49dfc185f847f832acf555c21bacfeae6bc542f6",
-        "try-omarchy.d/backup": "28b98f4abcefaf48e12a897936ecac61fcbc84a15f4990a80380a5e2012c9b39",
+        "try-omarchy.d/backup": "5cfbdb186eb2506f96c306c662d9d06322bc46ef1b955bc338a12b2cceb5a5b5",
         "try-omarchy.d/repack": "05797e5768652ee00a6f069001914a4a66a182b79a0633198a5afb23bcff47e8",
-        "try-omarchy.d/restore": "b96a047cf8b763b0b4b5a5166664c583b0e576e54a88459d42d35e782a3b660e",
+        "try-omarchy.d/restore": "399b31d5728d0fa158c8c745294db4ec89055a65aa9f1edf3dfbbc0472bc5c0a",
     },
 }:
     fail("factory rebuild kit component is not the vendored kit")
