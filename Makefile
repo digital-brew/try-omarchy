@@ -111,6 +111,8 @@ test-contracts:
 
 test-guest:
 	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_package.py"
+	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_native_camera_bridge.py"
+	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_display_sync.py"
 
 # The package's contracts with the Omarchy the factory installs today.
 test-upstream:

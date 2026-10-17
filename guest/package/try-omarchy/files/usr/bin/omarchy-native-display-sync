@@ -20,6 +20,26 @@ if (
 ):
     raise SystemExit(1)
 
+def refresh_limit_hz() -> float | None:
+    # An optional numeric local in monitors.lua caps the refresh rate below the
+    # host display's. Every guest frame is rendered through VirGL on the Mac,
+    # so 60 Hz on a 120 Hz display halves that work. Read it on each resync,
+    # like the scale, so later edits apply on the next display change.
+    try:
+        config = pathlib.Path(sys.argv[2]).read_text()
+    except OSError:
+        return None
+    match = re.search(
+        r"^\s*local\s+omarchy_monitor_refresh_hz\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*(?:--[^\n]*)?$",
+        config,
+        re.MULTILINE,
+    )
+    if not match:
+        return None
+    limit = float(match.group(1))
+    return limit if isfinite(limit) and limit >= 1 else None
+
+
 def modeline(
     pixel_clock: int,
     width: int,
@@ -48,16 +68,19 @@ def modeline(
     ):
         return None
 
+    htotal = width + hblank
+    vtotal = height + vblank
+    limit = refresh_limit_hz()
+    if limit and pixel_clock > limit * htotal * vtotal:
+        pixel_clock = round(limit * htotal * vtotal)
     # Hyprland 0.56 truncates a fractional MHz clock before converting it to
     # kHz. Supplying the nearest integral MHz preserves the intended refresh
     # as closely as that parser permits, while the active pixel size is exact.
     clock_mhz = max(1, (pixel_clock + 500_000) // 1_000_000)
     hsync_start = width + hfront
     hsync_end = hsync_start + hsync
-    htotal = width + hblank
     vsync_start = height + vfront
     vsync_end = vsync_start + vsync
-    vtotal = height + vblank
     hflag = "+hsync" if hsync_positive else "-hsync"
     vflag = "+vsync" if vsync_positive else "-vsync"
     return (
